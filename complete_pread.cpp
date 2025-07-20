@@ -10,6 +10,10 @@ bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset)
 		if (ret == -1 && errno == EINTR) {
 			continue;
 		}
+		if (ret == 0) {
+			errno = 0;
+			return false;
+		}
 		if (ret <= 0) {
 			return false;
 		}
