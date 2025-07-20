@@ -8,6 +8,6 @@
 bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset);
 
 // Same, but exit on failure, so never returns a short read.
-void complete_pread(int fd, void *ptr, size_t len, off_t offset);
+void complete_pread(int fd, void *ptr, size_t len, off_t offset, const char *filename_for_errors);
 
 #endif  // !defined(COMPLETE_PREAD_H)

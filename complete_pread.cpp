@@ -20,13 +20,13 @@ bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset)
 	return true;
 }
 
-void complete_pread(int fd, void *ptr, size_t len, off_t offset)
+void complete_pread(int fd, void *ptr, size_t len, off_t offset, const char *filename_for_errors)
 {
 	if (!try_complete_pread(fd, ptr, len, offset)) {
 		if (errno == 0) {
-			fprintf(stderr, "pread: Short read (file corrupted?)\n");
+			fprintf(stderr, "%s: Short read (file corrupted?)\n", filename_for_errors);
 		} else {
-			perror("pread");
+			perror(filename_for_errors);
 		}
 		exit(1);
 	}

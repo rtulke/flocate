@@ -70,10 +70,11 @@ void IOUringEngine::submit_stat(const char *path [[maybe_unused]], std::function
 void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(string_view)> cb)
 {
 	if (!using_uring) {
-		// Synchronous read.
+		// Synchronous read. We don't bother trying to track
+		// filenames through errors here, since they should be rare.
 		string s;
 		s.resize(len + slop_bytes);
-		complete_pread(fd, &s[0], len, offset);
+		complete_pread(fd, &s[0], len, offset, "sync read failed");
 		cb(string_view(s.data(), len));
 		return;
 	}

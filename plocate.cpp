@@ -97,7 +97,7 @@ Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 		posix_fadvise(fd, 0, len, POSIX_FADV_DONTNEED);
 	}
 
-	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0);
+	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0, filename_for_errors);
 	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
 		fprintf(stderr, "%s: database is corrupt or not a plocate database; please rebuild it.\n", filename_for_errors);
 		exit(1);
@@ -325,14 +325,14 @@ void deliver_results(WorkerThread *wt, Serializer *serializer)
 // we will primarily be CPU-bound, we'll be firing up one
 // worker thread for each spare core (the last one will
 // only be doing I/O). access() is still synchronous.
-uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus)
+uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus, const char *filename_for_errors)
 {
 	{
 		const Header &hdr = corpus.get_hdr();
 		if (hdr.zstd_dictionary_length_bytes > 0) {
 			string dictionary;
 			dictionary.resize(hdr.zstd_dictionary_length_bytes);
-			complete_pread(fd, &dictionary[0], hdr.zstd_dictionary_length_bytes, hdr.zstd_dictionary_offset_bytes);
+			complete_pread(fd, &dictionary[0], hdr.zstd_dictionary_length_bytes, hdr.zstd_dictionary_offset_bytes, filename_for_errors);
 			ddict = ZSTD_createDDict(dictionary.data(), dictionary.size());
 		}
 	}
@@ -341,7 +341,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 	Serializer serializer;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);
-	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0));
+	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0), filename_for_errors);
 	atomic<uint64_t> matched{ 0 };
 
 	mutex mu;
@@ -398,7 +398,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		if (compressed.size() < io_len) {
 			compressed.resize(io_len);
 		}
-		complete_pread(fd, &compressed[0], io_len, offsets[io_docid]);
+		complete_pread(fd, &compressed[0], io_len, offsets[io_docid], filename_for_errors);
 
 		{
 			unique_lock lock(mu);
@@ -532,7 +532,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 		// (We could have searched through all trigrams that matched
 		// the pattern and done a union of them, but that's a lot of
 		// work for fairly unclear gain.)
-		uint64_t matched = scan_all_docids(needles, fd, corpus);
+		uint64_t matched = scan_all_docids(needles, fd, corpus, filename.c_str());
 		dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 		        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 		close(fd);
