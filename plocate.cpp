@@ -102,8 +102,8 @@ Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 		fprintf(stderr, "%s: database is corrupt or not a plocate database; please rebuild it.\n", filename_for_errors);
 		exit(1);
 	}
-	if (hdr.version != 0 && hdr.version != 1) {
-		fprintf(stderr, "%s: has version %u, expected 0 or 1; please rebuild it.\n", filename_for_errors, hdr.version);
+	if (hdr.version != 0 && hdr.version != 1 && hdr.version != 2) {
+		fprintf(stderr, "%s: has version %u, expected 0, 1 or 2; please rebuild it.\n", filename_for_errors, hdr.version);
 		exit(1);
 	}
 	if (hdr.version == 0) {

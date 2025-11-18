@@ -27,6 +27,16 @@ using namespace std::chrono;
 
 constexpr unsigned num_overflow_slots = 16;
 
+namespace {
+
+template<class T>
+void append_raw(string &dst, const T &value)
+{
+	dst.append(reinterpret_cast<const char *>(&value), sizeof(value));
+}
+
+}  // namespace
+
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
 class PostingListBuilder {
@@ -172,7 +182,7 @@ string DictionaryBuilder::train(size_t buf_size)
 
 class EncodingCorpus : public DatabaseReceiver {
 public:
-	EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times);
+	EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times, bool store_metadata);
 	~EncodingCorpus();
 
 	void add_file(const FileRecord &record) override;
@@ -203,9 +213,12 @@ public:
 
 	size_t num_trigrams() const;
 	std::string get_compressed_dir_times();
+	std::string get_compressed_metadata();
 
 private:
 	void compress_dir_times(size_t allowed_slop);
+	void compress_metadata(size_t allowed_slop);
+	void append_metadata(const FileMetadata &metadata);
 
 	std::unique_ptr<PostingListBuilder *[]> invindex;
 	FILE *outfp;
@@ -214,20 +227,28 @@ private:
 	std::string tempbuf;
 	const size_t block_size;
 	const bool store_dir_times;
+	const bool store_metadata;
 	ZSTD_CDict *cdict;
 
 	ZSTD_CStream *dir_time_ctx = nullptr;
+	ZSTD_CStream *metadata_ctx = nullptr;
 	std::string dir_times;  // Buffer of still-uncompressed data.
 	std::string dir_times_compressed;
+	std::string metadata_stream;
+	std::string metadata_compressed;
 };
 
-EncodingCorpus::EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
-	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), outfp_pos(ftell(outfp)), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
+EncodingCorpus::EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times, bool store_metadata)
+	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), outfp_pos(ftell(outfp)), block_size(block_size), store_dir_times(store_dir_times), store_metadata(store_metadata), cdict(cdict)
 {
 	fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
 	if (store_dir_times) {
 		dir_time_ctx = ZSTD_createCStream();
 		ZSTD_initCStream(dir_time_ctx, /*level=*/6);
+	}
+	if (store_metadata) {
+		metadata_ctx = ZSTD_createCStream();
+		ZSTD_initCStream(metadata_ctx, /*level=*/6);
 	}
 }
 
@@ -261,6 +282,11 @@ void EncodingCorpus::add_file(const FileRecord &record)
 		}
 		compress_dir_times(/*allowed_slop=*/4096);
 	}
+
+	if (store_metadata) {
+		append_metadata(record.metadata);
+		compress_metadata(/*allowed_slop=*/4096);
+	}
 }
 
 void EncodingCorpus::compress_dir_times(size_t allowed_slop)
@@ -290,6 +316,68 @@ void EncodingCorpus::compress_dir_times(size_t allowed_slop)
 
 		if (outbuf.pos == 0 && inbuf.pos == 0) {
 			// Nothing happened (not enough data?), try again later.
+			return;
+		}
+	}
+}
+
+void EncodingCorpus::append_metadata(const FileMetadata &metadata)
+{
+	if (!metadata.enabled) {
+		metadata_stream.push_back('\0');
+		return;
+	}
+
+	metadata_stream.push_back('\1');
+	append_raw(metadata_stream, metadata.mode);
+	append_raw(metadata_stream, metadata.uid);
+	append_raw(metadata_stream, metadata.gid);
+	append_raw(metadata_stream, metadata.size);
+	append_raw(metadata_stream, metadata.mtime.sec);
+	append_raw(metadata_stream, metadata.mtime.nsec);
+	append_raw(metadata_stream, metadata.ctime.sec);
+	append_raw(metadata_stream, metadata.ctime.nsec);
+	append_raw(metadata_stream, metadata.atime.sec);
+	append_raw(metadata_stream, metadata.atime.nsec);
+
+	metadata_stream.push_back(static_cast<char>(metadata.hash.kind));
+	uint8_t hash_len = metadata.hash.length;
+	assert(hash_len <= metadata.hash.value.size());
+	metadata_stream.push_back(static_cast<char>(hash_len));
+	if (hash_len != 0) {
+		metadata_stream.append(reinterpret_cast<const char *>(metadata.hash.value.data()), hash_len);
+	}
+}
+
+void EncodingCorpus::compress_metadata(size_t allowed_slop)
+{
+	if (!store_metadata) {
+		return;
+	}
+	while (metadata_stream.size() >= allowed_slop) {
+		size_t old_size = metadata_compressed.size();
+		metadata_compressed.resize(old_size + 4096);
+
+		ZSTD_outBuffer outbuf;
+		outbuf.dst = metadata_compressed.data() + old_size;
+		outbuf.size = 4096;
+		outbuf.pos = 0;
+
+		ZSTD_inBuffer inbuf;
+		inbuf.src = metadata_stream.data();
+		inbuf.size = metadata_stream.size();
+		inbuf.pos = 0;
+
+		int ret = ZSTD_compressStream(metadata_ctx, &outbuf, &inbuf);
+		if (ret < 0) {
+			fprintf(stderr, "ZSTD_compressStream() failed\n");
+			exit(1);
+		}
+
+		metadata_compressed.resize(old_size + outbuf.pos);
+		metadata_stream.erase(metadata_stream.begin(), metadata_stream.begin() + inbuf.pos);
+
+		if (outbuf.pos == 0 && inbuf.pos == 0) {
 			return;
 		}
 	}
@@ -399,6 +487,39 @@ string EncodingCorpus::get_compressed_dir_times()
 	}
 
 	return dir_times_compressed;
+}
+
+string EncodingCorpus::get_compressed_metadata()
+{
+	if (!store_metadata) {
+		return "";
+	}
+	compress_metadata(/*allowed_slop=*/0);
+	assert(metadata_stream.empty());
+
+	for (;;) {
+		size_t old_size = metadata_compressed.size();
+		metadata_compressed.resize(old_size + 4096);
+
+		ZSTD_outBuffer outbuf;
+		outbuf.dst = metadata_compressed.data() + old_size;
+		outbuf.size = 4096;
+		outbuf.pos = 0;
+
+		int ret = ZSTD_endStream(metadata_ctx, &outbuf);
+		if (ret < 0) {
+			fprintf(stderr, "ZSTD_compressStream() failed\n");
+			exit(1);
+		}
+
+		metadata_compressed.resize(old_size + outbuf.pos);
+
+		if (ret == 0) {
+			break;
+		}
+	}
+
+	return metadata_compressed;
 }
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf)
@@ -529,7 +650,7 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	hdr.extra_ht_slots = num_overflow_slots;
 	hdr.num_docids = 0;
 	hdr.hash_table_offset_bytes = -1;  // We don't know these offsets yet.
-	hdr.max_version = 2;
+	hdr.max_version = 3;
 	hdr.filename_index_offset_bytes = -1;
 	hdr.zstd_dictionary_length_bytes = -1;
 	hdr.zstd_dictionary_offset_bytes = -1; // Dictionary offset is not known yet.
@@ -540,6 +661,11 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	hdr.next_zstd_dictionary_offset_bytes = 0;
 	hdr.conf_block_length_bytes = 0;
 	hdr.conf_block_offset_bytes = 0;
+	hdr.metadata_length_bytes = 0;
+	hdr.metadata_offset_bytes = 0;
+	hdr.history_length_bytes = 0;
+	hdr.history_offset_bytes = 0;
+	hdr.metadata_flags = METADATA_FLAG_NONE;
 
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
@@ -554,10 +680,10 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	}
 }
 
-DatabaseReceiver *DatabaseBuilder::start_corpus(bool store_dir_times)
+DatabaseReceiver *DatabaseBuilder::start_corpus(bool store_dir_times, bool store_metadata)
 {
 	corpus_start = steady_clock::now();
-	corpus = new EncodingCorpus(outfp, block_size, cdict, store_dir_times);
+	corpus = new EncodingCorpus(outfp, block_size, cdict, store_dir_times, store_metadata);
 	return corpus;
 }
 
@@ -666,6 +792,17 @@ void DatabaseBuilder::finish_corpus()
 		compressed_dir_times.clear();
 	}
 
+	string compressed_metadata = corpus->get_compressed_metadata();
+	size_t bytes_for_metadata = 0;
+	if (!compressed_metadata.empty()) {
+		hdr.metadata_offset_bytes = ftell(outfp);
+		hdr.metadata_length_bytes = compressed_metadata.size();
+		fwrite(compressed_metadata.data(), compressed_metadata.size(), 1, outfp);
+		bytes_for_metadata = compressed_metadata.size();
+		compressed_metadata.clear();
+		hdr.metadata_flags = METADATA_FLAG_POSIX_V1;
+	}
+
 	// Write the recommended dictionary for next update.
 	if (!next_dictionary.empty()) {
 		hdr.next_zstd_dictionary_offset_bytes = ftell(outfp);
@@ -681,7 +818,7 @@ void DatabaseBuilder::finish_corpus()
 	}
 
 	// Rewind, and write the updated header.
-	hdr.version = 1;
+	hdr.version = 2;
 	fseek(outfp, 0, SEEK_SET);
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
@@ -710,7 +847,7 @@ void DatabaseBuilder::finish_corpus()
 
 	fclose(outfp);
 
-	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames + bytes_for_compressed_dir_times);
+	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames + bytes_for_compressed_dir_times + bytes_for_metadata);
 
 	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Dictionary:     %'7.1f MB\n", hdr.zstd_dictionary_length_bytes / 1048576.0);
@@ -720,6 +857,9 @@ void DatabaseBuilder::finish_corpus()
 	dprintf("Filenames:      %'7.1f MB\n", bytes_for_filenames / 1048576.0);
 	if (bytes_for_compressed_dir_times != 0) {
 		dprintf("Modify times:   %'7.1f MB\n", bytes_for_compressed_dir_times / 1048576.0);
+	}
+	if (bytes_for_metadata != 0) {
+		dprintf("Metadata:       %'7.1f MB\n", bytes_for_metadata / 1048576.0);
 	}
 	dprintf("Total:          %'7.1f MB\n", total_bytes / 1048576.0);
 	dprintf("\n");

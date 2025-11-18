@@ -24,9 +24,20 @@ struct Header {
 	uint64_t next_zstd_dictionary_offset_bytes;
 	uint64_t conf_block_length_bytes;
 	uint64_t conf_block_offset_bytes;
+	// Only if max_version >= 3.
+	uint64_t metadata_length_bytes;
+	uint64_t metadata_offset_bytes;
+	uint64_t history_length_bytes;
+	uint64_t history_offset_bytes;
+	uint32_t metadata_flags;
 
 	// Only if max_version >= 2.
 	bool check_visibility;
+};
+
+enum MetadataFlags : uint32_t {
+	METADATA_FLAG_NONE = 0,
+	METADATA_FLAG_POSIX_V1 = 1 << 0,
 };
 
 struct Trigram {

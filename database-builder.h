@@ -106,7 +106,7 @@ class EncodingCorpus;
 class DatabaseBuilder {
 public:
 	DatabaseBuilder(const char *outfile, gid_t owner, int block_size, std::string dictionary, bool check_visibility);
-	DatabaseReceiver *start_corpus(bool store_dir_times);
+	DatabaseReceiver *start_corpus(bool store_dir_times, bool store_metadata);
 	void set_next_dictionary(std::string next_dictionary);
 	void set_conf_block(std::string conf_block);
 	void finish_corpus();

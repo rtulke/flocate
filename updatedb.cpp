@@ -292,7 +292,7 @@ ExistingDB::ExistingDB(int fd)
 		error = true;
 		return;
 	}
-	if (hdr.version != 1 || hdr.max_version < 2) {
+	if ((hdr.version != 1 && hdr.version != 2) || hdr.max_version < 2) {
 		if (conf_verbose) {
 			fprintf(stderr, "Old database had version mismatch (version=%d max_version=%d), ignoring.\n",
 			        hdr.version, hdr.max_version);
@@ -837,7 +837,7 @@ int main(int argc, char **argv)
 
 	DatabaseBuilder db(conf_output.c_str(), owner, conf_block_size, existing_db.read_next_dictionary(), conf_check_visibility);
 	db.set_conf_block(conf_block);
-	DatabaseReceiver *corpus = db.start_corpus(/*store_dir_times=*/true);
+	DatabaseReceiver *corpus = db.start_corpus(/*store_dir_times=*/true, /*store_metadata=*/true);
 
 	int root_fd = opendir_noatime(AT_FDCWD, conf_scan_root);
 	if (root_fd == -1) {
