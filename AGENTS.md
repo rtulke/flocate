@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`flocate.cpp`, `lib.cpp`, and supporting headers in the repo root implement the CLI, compression pipeline, and posting-list plumbing. `updatedb.cpp` and the `flocate-updatedb.*` units handle database generation and systemd integration. Manual pages (`*.1`, `*.8`, `*.in`) and helper scripts (`update-flocate.sh`, `mkdir.sh`) live alongside the sources. Create an `obj/` build directory (kept out of version control) for all Meson artifacts, including tests and generated binaries.
+Source code lives in `src/` with corresponding headers in `include/`. The CLI entrypoints (`src/flocate.cpp`, `src/updatedb.cpp`, etc.) and shared plumbing (`lib.cpp`, compression helpers, metadata hashing) all build from there. Systemd units reside under `systemd/`, man pages under `man/`, and helper scripts like `scripts/update-flocate.sh`/`scripts/mkdir.sh` accompany the build. Create an `obj/` build directory (kept out of version control) for all Meson artifacts, including tests and generated binaries.
 
 ## Build, Test, and Development Commands
 - `meson setup obj` — Configure the project for C++17 with the default feature set; rerun with `meson setup obj --wipe` when dependencies change.

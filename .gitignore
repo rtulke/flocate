@@ -19,6 +19,9 @@ plocate-build
 
 # Debugger Files
 *.pdb
+AGENTS.md
+FORENSICS_HISTORY.md
+FORENSICS_PROGRESS.md
 
 # Compiled Dynamic libraries
 *.so
@@ -42,3 +45,5 @@ plocate-build
 
 # debug information files
 *.dwo
+
+
