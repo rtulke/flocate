@@ -14,10 +14,10 @@
 - **Purpose**: Track adds/removals/metadata changes per updatedb run for `showdiff`.
 - **Storage**:
   - After metadata stream, we append a Zstd-compressed sequence of events. Each event stores `{uint8_t kind, dir_time event_time, uint32_t path_len, path bytes, encoded old metadata, encoded new metadata}`; metadata uses the same layout as the main stream (enabled flag + POSIX fields + hash).
-  - Change kinds: 0 = added, 1 = removed, 2 = modified. Added events carry only the new metadata, removed events carry only the old metadata.
+  - Change kinds: 0 = added, 1 = removed, 2 = modified, 3 = run marker. Added events carry only the new metadata, removed events carry only the old metadata. Run markers delimit individual `updatedb` executions and store only timestamps.
   - Header fields `history_offset_bytes/history_length_bytes` point at the compressed blob.
 - **Retention**:
-  - Currently we keep a single run's event log. Future work can extend this to a rolling history through multiple DBs or user-configurable retention (`--history-depth` placeholder).
+  - `--history-depth=N` (and `HISTORY_DEPTH` in `updatedb.conf`) retains the latest `N` executions by prepending run markers and trimming the combined log before writing it back into the database. `N=0` disables history entirely.
   - External tools can replay logs chronologically to rebuild deltas without rescanning the filesystem.
 
 ## showdiff Consumption

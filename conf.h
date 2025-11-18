@@ -60,6 +60,7 @@ extern bool conf_verbose;
 /* Configuration representation for the database configuration block */
 extern std::string conf_block;
 extern MetadataHashKind conf_metadata_hash_kind;
+extern int conf_history_depth;
 
 /* Parse /etc/updatedb.conf and command-line arguments ARGC, ARGV.
    Exit on error or --help, --version. */

@@ -253,6 +253,158 @@ void record_history_event(vector<HistoryEvent> *history, HistoryEventKind kind, 
 	history->push_back(move(event));
 }
 
+bool decode_history_metadata(const char *&ptr, const char *end, FileMetadata &meta)
+{
+	if (ptr >= end) {
+		return false;
+	}
+	unsigned char flag = static_cast<unsigned char>(*ptr++);
+	if (flag == 0) {
+		meta = FileMetadata{};
+		return true;
+	}
+	const size_t fixed = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
+		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
+		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
+		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
+	if (static_cast<size_t>(end - ptr) < fixed + 2) {
+		return false;
+	}
+	memcpy(&meta.mode, ptr, sizeof(meta.mode));
+	ptr += sizeof(meta.mode);
+	memcpy(&meta.uid, ptr, sizeof(meta.uid));
+	ptr += sizeof(meta.uid);
+	memcpy(&meta.gid, ptr, sizeof(meta.gid));
+	ptr += sizeof(meta.gid);
+	memcpy(&meta.size, ptr, sizeof(meta.size));
+	ptr += sizeof(meta.size);
+	memcpy(&meta.mtime.sec, ptr, sizeof(meta.mtime.sec));
+	ptr += sizeof(meta.mtime.sec);
+	memcpy(&meta.mtime.nsec, ptr, sizeof(meta.mtime.nsec));
+	ptr += sizeof(meta.mtime.nsec);
+	memcpy(&meta.ctime.sec, ptr, sizeof(meta.ctime.sec));
+	ptr += sizeof(meta.ctime.sec);
+	memcpy(&meta.ctime.nsec, ptr, sizeof(meta.ctime.nsec));
+	ptr += sizeof(meta.ctime.nsec);
+	memcpy(&meta.atime.sec, ptr, sizeof(meta.atime.sec));
+	ptr += sizeof(meta.atime.sec);
+	memcpy(&meta.atime.nsec, ptr, sizeof(meta.atime.nsec));
+	ptr += sizeof(meta.atime.nsec);
+	meta.enabled = true;
+	meta.hash.kind = static_cast<MetadataHashKind>(*ptr++);
+	uint8_t hash_len = static_cast<uint8_t>(*ptr++);
+	if (static_cast<size_t>(end - ptr) < hash_len) {
+		return false;
+	}
+	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
+	if (meta.hash.length > 0) {
+		memcpy(meta.hash.value.data(), ptr, meta.hash.length);
+	}
+	ptr += hash_len;
+	return true;
+}
+
+vector<HistoryEvent> decode_history_stream(const string &data)
+{
+	vector<HistoryEvent> events;
+	const char *ptr = data.data();
+	const char *end = ptr + data.size();
+	if (ptr == end) {
+		return events;
+	}
+	while (ptr < end) {
+		if (static_cast<size_t>(end - ptr) < 1 + sizeof(int64_t) + sizeof(int32_t) + sizeof(uint32_t)) {
+			break;
+		}
+		HistoryEvent event;
+		event.kind = static_cast<HistoryEventKind>(*ptr++);
+		memcpy(&event.event_time.sec, ptr, sizeof(event.event_time.sec));
+		ptr += sizeof(event.event_time.sec);
+		memcpy(&event.event_time.nsec, ptr, sizeof(event.event_time.nsec));
+		ptr += sizeof(event.event_time.nsec);
+		uint32_t path_len;
+		memcpy(&path_len, ptr, sizeof(path_len));
+		ptr += sizeof(path_len);
+		if (static_cast<size_t>(end - ptr) < path_len) {
+			break;
+		}
+		event.path.assign(ptr, path_len);
+		ptr += path_len;
+		if (!decode_history_metadata(ptr, end, event.old_metadata)) {
+			break;
+		}
+		if (!decode_history_metadata(ptr, end, event.new_metadata)) {
+			break;
+		}
+		events.push_back(move(event));
+	}
+	if (!events.empty() && events.front().kind != HistoryEventKind::RunMarker) {
+		HistoryEvent marker;
+		marker.kind = HistoryEventKind::RunMarker;
+		marker.event_time = events.front().event_time;
+		events.insert(events.begin(), marker);
+	}
+	return events;
+}
+
+string decompress_history_blob(const vector<char> &compressed)
+{
+	ZSTD_DCtx *ctx = ZSTD_createDCtx();
+	if (ctx == nullptr) {
+		if (conf_verbose) {
+			fprintf(stderr, "Failed to create ZSTD context for history\n");
+		}
+		return {};
+	}
+	string output;
+	ZSTD_inBuffer inbuf{ compressed.data(), compressed.size(), 0 };
+	while (inbuf.pos < inbuf.size) {
+		char buffer[4096];
+		ZSTD_outBuffer outbuf{ buffer, sizeof(buffer), 0 };
+		size_t ret = ZSTD_decompressStream(ctx, &outbuf, &inbuf);
+		if (ZSTD_isError(ret)) {
+			if (conf_verbose) {
+				fprintf(stderr, "ZSTD_decompressStream(history) failed: %s\n", ZSTD_getErrorName(ret));
+			}
+			output.clear();
+			break;
+		}
+		output.append(buffer, outbuf.pos);
+		if (ret == 0 && inbuf.pos == inbuf.size) {
+			break;
+		}
+	}
+	ZSTD_freeDCtx(ctx);
+	return output;
+}
+
+vector<HistoryEvent> trim_history_runs(const vector<HistoryEvent> &events, int max_runs)
+{
+	if (max_runs <= 0) {
+		return {};
+	}
+	if (events.empty()) {
+		return events;
+	}
+	vector<size_t> run_starts;
+	if (events.front().kind != HistoryEventKind::RunMarker) {
+		run_starts.push_back(0);
+	}
+	for (size_t i = 0; i < events.size(); ++i) {
+		if (events[i].kind == HistoryEventKind::RunMarker) {
+			run_starts.push_back(i);
+		}
+	}
+	if (run_starts.empty()) {
+		return events;
+	}
+	if (static_cast<int>(run_starts.size()) <= max_runs) {
+		return events;
+	}
+	size_t keep_index = run_starts[run_starts.size() - max_runs];
+	return vector<HistoryEvent>(events.begin() + keep_index, events.end());
+}
+
 // Represents the old database we are updating.
 class ExistingDB {
 public:
@@ -269,6 +421,7 @@ public:
 	string read_next_dictionary() const;
 	bool get_error() const { return error; }
 	const FileMetadata &last_metadata() const { return last_metadata_record; }
+	vector<HistoryEvent> read_history_events() const;
 
 private:
 	bool ensure_metadata_bytes(size_t need);
@@ -726,6 +879,23 @@ string ExistingDB::read_next_dictionary() const
 	return str;
 }
 
+vector<HistoryEvent> ExistingDB::read_history_events() const
+{
+	vector<HistoryEvent> events;
+	if (hdr.history_length_bytes == 0) {
+		return events;
+	}
+	vector<char> compressed(hdr.history_length_bytes);
+	if (!try_complete_pread(fd, compressed.data(), compressed.size(), hdr.history_offset_bytes)) {
+		if (conf_verbose) {
+			perror("pread(history)");
+		}
+		return events;
+	}
+	string decompressed = decompress_history_blob(compressed);
+	return decode_history_stream(decompressed);
+}
+
 // Scans the directory with absolute path “path”, which is opened as “fd”.
 // Uses relative paths and openat() only, evading any issues with PATH_MAX
 // and time-of-check-time-of-use race conditions. (mlocate's updatedb
@@ -1078,7 +1248,28 @@ int main(int argc, char **argv)
 	}
 
 	vector<HistoryEvent> history_events;
-	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, &existing_db, corpus, &dict_builder, &history_events);
+	vector<HistoryEvent> *history_sink = (conf_history_depth == 0) ? nullptr : &history_events;
+	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, &existing_db, corpus, &dict_builder, history_sink);
+
+	if (conf_history_depth > 0) {
+		HistoryEvent marker;
+		marker.kind = HistoryEventKind::RunMarker;
+		marker.event_time = current_realtime();
+		history_events.insert(history_events.begin(), marker);
+		if (conf_history_depth > 1) {
+			vector<HistoryEvent> previous = existing_db.read_history_events();
+			vector<HistoryEvent> merged;
+			merged.reserve(previous.size() + history_events.size());
+			merged.insert(merged.end(), previous.begin(), previous.end());
+			merged.insert(merged.end(), history_events.begin(), history_events.end());
+			history_events = trim_history_runs(merged, conf_history_depth);
+		} else {
+			vector<HistoryEvent> trimmed = trim_history_runs(history_events, conf_history_depth);
+			history_events.swap(trimmed);
+		}
+	} else {
+		history_events.clear();
+	}
 
 	// It's too late to use the dictionary for the data we already compressed,
 	// unless we wanted to either scan the entire file system again (acceptable

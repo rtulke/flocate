@@ -59,6 +59,7 @@ enum class HistoryEventKind : uint8_t {
 	Added = 0,
 	Removed = 1,
 	Modified = 2,
+	RunMarker = 3,
 };
 
 struct HistoryEvent {

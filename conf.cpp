@@ -71,6 +71,7 @@ string conf_block;
 int conf_block_size = 32;
 bool use_debug = false;
 MetadataHashKind conf_metadata_hash_kind = MetadataHashKind::None;
+int conf_history_depth = 1;
 
 /* Parse a STR, store the parsed boolean value to DEST;
    return 0 if OK, -1 on error. */
@@ -176,7 +177,8 @@ enum {
 	UCT_PRUNEFS,
 	UCT_PRUNENAMES,
 	UCT_PRUNEPATHS,
-	UCT_METADATA_HASH
+	UCT_METADATA_HASH,
+	UCT_HISTORY_DEPTH
 };
 
 /* Return next token from uc_file; for UCT_IDENTIFIER, UCT_QUOTED or keywords,
@@ -238,6 +240,8 @@ uc_lex(void)
 			return UCT_PRUNEPATHS;
 		if (uc_lex_buf == "METADATA_HASH")
 			return UCT_METADATA_HASH;
+		if (uc_lex_buf == "HISTORY_DEPTH")
+			return UCT_HISTORY_DEPTH;
 		return UCT_IDENTIFIER;
 	}
 	}
@@ -247,7 +251,7 @@ uc_lex(void)
 static void
 parse_updatedb_conf(void)
 {
-	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash;
+	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash, had_history_depth;
 
 	uc_file = fopen(UPDATEDB_CONF, "r");
 	if (uc_file == NULL) {
@@ -264,6 +268,7 @@ parse_updatedb_conf(void)
 	had_prunenames = false;
 	had_prunepaths = false;
 	had_metadata_hash = false;
+	had_history_depth = false;
 	for (;;) {
 		bool *had_var;
 		int var_token, token;
@@ -294,6 +299,10 @@ parse_updatedb_conf(void)
 
 		case UCT_METADATA_HASH:
 			had_var = &had_metadata_hash;
+			break;
+
+		case UCT_HISTORY_DEPTH:
+			had_var = &had_history_depth;
 			break;
 
 		case UCT_IDENTIFIER:
@@ -343,6 +352,13 @@ parse_updatedb_conf(void)
 				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 				exit(EXIT_FAILURE);
 			}
+		} else if (var_token == UCT_HISTORY_DEPTH) {
+			conf_history_depth = atoi(uc_lex_buf.c_str());
+			if (conf_history_depth < 0) {
+				fprintf(stderr, "%s:%u: invalid value `%s' of HISTORY_DEPTH\n",
+				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+				exit(EXIT_FAILURE);
+			}
 		} else
 			abort();
 		token = uc_lex();
@@ -387,8 +403,9 @@ help(void)
 	         "                                 `%s')\n"
 	         "  -b, --block-size SIZE          number of filenames to store\n"
 	         "                                 in each block (default 32)\n"
-	         "      --metadata-hash ALGO       hash regular files (none, xxh64,\n"
-	         "                                 sha256; default \"none\")\n"
+         "      --metadata-hash ALGO       hash regular files (none, xxh64,\n"
+         "                                 sha256; default \"none\")\n"
+         "      --history-depth N          keep metadata history for N runs\n"
 	         "      --prune-bind-mounts FLAG   omit bind mounts (default "
 	         "\"no\")\n"
 	         "      --prunefs FS               filesystems to omit from "
@@ -437,7 +454,8 @@ parse_arguments(int argc, char *argv[])
 {
 	enum { OPT_DEBUG_PRUNING = CHAR_MAX + 1,
 	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2,
-	       OPT_METADATA_HASH = CHAR_MAX + 3 };
+	       OPT_METADATA_HASH = CHAR_MAX + 3,
+	       OPT_HISTORY_DEPTH = CHAR_MAX + 4 };
 
 	static const struct option options[] = {
 		{ "add-prunefs", required_argument, NULL, 'f' },
@@ -454,6 +472,7 @@ parse_arguments(int argc, char *argv[])
 		{ "prunepaths", required_argument, NULL, 'P' },
 		{ "require-visibility", required_argument, NULL, 'l' },
 		{ "metadata-hash", required_argument, NULL, OPT_METADATA_HASH },
+		{ "history-depth", required_argument, NULL, OPT_HISTORY_DEPTH },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "version", no_argument, NULL, 'V' },
 		{ "block-size", required_argument, 0, 'b' },
@@ -566,6 +585,14 @@ parse_arguments(int argc, char *argv[])
 				exit(EXIT_FAILURE);
 			}
 			break;
+		case OPT_HISTORY_DEPTH:
+			conf_history_depth = atoi(optarg);
+			if (conf_history_depth < 0) {
+				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
+				        program_invocation_name, optarg, "history-depth");
+				exit(EXIT_FAILURE);
+			}
+			break;
 
 		case 'f':
 			prunefs_changed = true;
@@ -675,6 +702,10 @@ gen_conf_block(void)
 	gen_conf_block_string_list(&conf_block, &conf_prunepaths);
 	CONST("metadata_hash");
 	conf_block += metadata_hash_kind_to_string(conf_metadata_hash_kind);
+	conf_block.push_back('\0');
+	conf_block.push_back('\0');
+	CONST("history_depth");
+	conf_block += to_string(conf_history_depth);
 	conf_block.push_back('\0');
 	conf_block.push_back('\0');
 	/* scan_root is contained directly in the header */

@@ -122,6 +122,11 @@ The resulting hashes are stored in the database and can be used by
 forensic tooling to compare snapshots.
 
 .TP
+\fB\-\-history\-depth\fR \fIN\fR
+Keep metadata/history logs for the most recent \fIN\fR runs. The default
+is \fB1\fR; setting \fIN\fR to \fB0\fR disables history tracking entirely.
+
+.TP
 \fB\-l\fR, \fB\-\-require\-visibility\fR \fIFLAG\fR
 Set the \*(lqrequire file visibility before reporting it\*(rq flag in the
 generated database to \fIFLAG\fR.

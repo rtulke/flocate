@@ -97,6 +97,12 @@ Hash values are stored in the database metadata and can be consumed
 by auxiliary tools (for example forensic diffing utilities).
 
 .TP
+\fBHISTORY_DEPTH\fR
+Specifies how many \fBupdatedb\fR runs should have their change history stored
+inside the database. The default is \fB1\fR (only the most recent run).
+Setting it to \fB0\fR disables history collection entirely.
+
+.TP
 \fBPRUNE_BIND_MOUNTS\fR
 One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
 If

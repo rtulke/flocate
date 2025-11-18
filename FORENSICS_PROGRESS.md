@@ -20,7 +20,7 @@ Augment plocate with optional forensic metadata capture, historical change track
 3. **Database format updates** (in progress)  
    - Extend `EncodingCorpus` to serialize metadata streams and an append-only history log with Zstd compression.  
    - Update `db.h` with offsets/lengths for metadata/history and ensure legacy paths remain untouched when feature is off.
-   - Status: Metadata stream supports hashes, and a per-run history log (add/remove/modify events) is compressed into the DB; future work focuses on consumption tooling.
+   - Status: Metadata stream supports hashes, per-run history logs are retained with configurable depth (`--history-depth`), and tooling can consume both; future work focuses on richer runtime UX.
 4. **Runtime & diff tooling** (in progress)  
    - Implement `showdiff` to compare two DBs or DB vs. live FS, surfacing added/removed/modified entries using metadata.  
    - Add plocate CLI toggles to read/display metadata only on demand.

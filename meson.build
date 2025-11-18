@@ -43,7 +43,7 @@ executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp
 	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))
-executable('plocate-showdiff', ['showdiff.cpp'],
+executable('plocate-showdiff', ['showdiff.cpp', 'metadata_hash.cpp'],
 	dependencies: [zstddep],
 	install: true,
 	install_dir: get_option('sbindir'))
@@ -69,6 +69,7 @@ if get_option('install_cron')
 endif
 install_man('plocate.1')
 install_man('plocate-build.8')
+install_man('plocate-showdiff.1')
 
 updatedb_man = configure_file(input: 'updatedb.8.in',
                output: updatedb_progname + '.8',
