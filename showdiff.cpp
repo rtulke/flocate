@@ -2,15 +2,16 @@
 #include "metadata.h"
 
 #include <algorithm>
+#include <cstring>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 #include <zstd.h>
 
@@ -18,7 +19,12 @@ using namespace std;
 
 namespace {
 
-bool pread_all(int fd, void *buf, size_t len, off_t offset)
+struct Snapshot {
+	vector<string> paths;
+	vector<FileMetadata> metadata;
+};
+
+bool pread_fully(int fd, void *buf, size_t len, off_t offset)
 {
 	char *ptr = static_cast<char *>(buf);
 	while (len > 0) {
@@ -33,7 +39,19 @@ bool pread_all(int fd, void *buf, size_t len, off_t offset)
 	return true;
 }
 
-string decompress_history(const vector<char> &compressed)
+vector<char> read_blob(int fd, uint64_t offset, uint64_t length)
+{
+	vector<char> buf(length);
+	if (length > 0 && !pread_fully(fd, buf.data(), length, offset)) {
+		fprintf(stderr, "Failed to read blob at offset %llu length %llu\n",
+		        static_cast<unsigned long long>(offset),
+		        static_cast<unsigned long long>(length));
+		exit(1);
+	}
+	return buf;
+}
+
+string decompress_stream(const vector<char> &compressed)
 {
 	ZSTD_DCtx *ctx = ZSTD_createDCtx();
 	if (ctx == nullptr) {
@@ -42,18 +60,10 @@ string decompress_history(const vector<char> &compressed)
 	}
 
 	string output;
-	ZSTD_inBuffer inbuf;
-	inbuf.src = compressed.data();
-	inbuf.size = compressed.size();
-	inbuf.pos = 0;
-
+	ZSTD_inBuffer inbuf{ compressed.data(), compressed.size(), 0 };
 	while (inbuf.pos < inbuf.size) {
-		char buffer[4096];
-		ZSTD_outBuffer outbuf;
-		outbuf.dst = buffer;
-		outbuf.size = sizeof(buffer);
-		outbuf.pos = 0;
-
+		char buffer[8192];
+		ZSTD_outBuffer outbuf{ buffer, sizeof(buffer), 0 };
 		size_t ret = ZSTD_decompressStream(ctx, &outbuf, &inbuf);
 		if (ZSTD_isError(ret)) {
 			fprintf(stderr, "ZSTD_decompressStream() failed: %s\n", ZSTD_getErrorName(ret));
@@ -61,10 +71,9 @@ string decompress_history(const vector<char> &compressed)
 		}
 		output.append(buffer, outbuf.pos);
 		if (ret == 0 && inbuf.pos == inbuf.size) {
-			break;  // End of frame.
+			break;
 		}
 	}
-
 	ZSTD_freeDCtx(ctx);
 	return output;
 }
@@ -79,13 +88,15 @@ bool decode_metadata(const char *&ptr, const char *end, FileMetadata &meta)
 		meta = FileMetadata{};
 		return true;
 	}
-	const size_t fixed_size = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
+
+	const size_t fixed = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
 		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
 		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
 		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
-	if (end - ptr < static_cast<ptrdiff_t>(fixed_size + 2)) {
+	if (static_cast<size_t>(end - ptr) < fixed + 2) {
 		return false;
 	}
+
 	memcpy(&meta.mode, ptr, sizeof(meta.mode));
 	ptr += sizeof(meta.mode);
 	memcpy(&meta.uid, ptr, sizeof(meta.uid));
@@ -107,30 +118,33 @@ bool decode_metadata(const char *&ptr, const char *end, FileMetadata &meta)
 	memcpy(&meta.atime.nsec, ptr, sizeof(meta.atime.nsec));
 	ptr += sizeof(meta.atime.nsec);
 	meta.enabled = true;
+
 	meta.hash.kind = static_cast<MetadataHashKind>(*ptr++);
 	uint8_t hash_len = static_cast<uint8_t>(*ptr++);
-	if (end - ptr < hash_len) {
+	if (static_cast<size_t>(end - ptr) < hash_len) {
 		return false;
 	}
 	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
-	if (meta.hash.length != 0) {
+	if (meta.hash.length > 0) {
 		memcpy(meta.hash.value.data(), ptr, meta.hash.length);
 	}
 	ptr += hash_len;
 	return true;
 }
 
-const char *hash_kind_name(MetadataHashKind kind)
+vector<FileMetadata> parse_metadata_stream(const string &data)
 {
-	switch (kind) {
-	case MetadataHashKind::None:
-		return "none";
-	case MetadataHashKind::Sha256:
-		return "sha256";
-	case MetadataHashKind::XxHash64:
-		return "xxh64";
+	vector<FileMetadata> metas;
+	const char *ptr = data.data();
+	const char *end = ptr + data.size();
+	while (ptr < end) {
+		FileMetadata meta;
+		if (!decode_metadata(ptr, end, meta)) {
+			break;
+		}
+		metas.push_back(meta);
 	}
-	return "unknown";
+	return metas;
 }
 
 string format_metadata(const FileMetadata &meta)
@@ -146,7 +160,8 @@ string format_metadata(const FileMetadata &meta)
 	string out(buf);
 	if (meta.hash.kind != MetadataHashKind::None && meta.hash.length != 0) {
 		out += " hash=";
-		out += hash_kind_name(meta.hash.kind);
+		out += (meta.hash.kind == MetadataHashKind::Sha256) ? "sha256" :
+		       (meta.hash.kind == MetadataHashKind::XxHash64) ? "xxh64" : "unknown";
 		out += ':';
 		static const char hex[] = "0123456789abcdef";
 		for (size_t i = 0; i < meta.hash.length; ++i) {
@@ -182,13 +197,154 @@ void print_event(const HistoryEvent &event)
 	}
 }
 
+string decompress_block(const vector<char> &compressed, ZSTD_DCtx *ctx, ZSTD_DDict *ddict)
+{
+	ZSTD_DCtx_reset(ctx, ZSTD_reset_session_only);
+	if (ddict != nullptr) {
+		ZSTD_DCtx_refDDict(ctx, ddict);
+	}
+
+	unsigned long long content_size = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
+	if (content_size != ZSTD_CONTENTSIZE_ERROR && content_size != ZSTD_CONTENTSIZE_UNKNOWN) {
+		string output(content_size, '\0');
+		size_t ret;
+		if (ddict != nullptr) {
+			ret = ZSTD_decompress_usingDDict(ctx, output.data(), output.size(), compressed.data(), compressed.size(), ddict);
+		} else {
+			ret = ZSTD_decompressDCtx(ctx, output.data(), output.size(), compressed.data(), compressed.size());
+		}
+		if (ZSTD_isError(ret)) {
+			fprintf(stderr, "ZSTD_decompress() failed: %s\n", ZSTD_getErrorName(ret));
+			exit(1);
+		}
+		output.resize(ret);
+		return output;
+	}
+
+	string output;
+	ZSTD_inBuffer inbuf{ compressed.data(), compressed.size(), 0 };
+	while (inbuf.pos < inbuf.size) {
+		char buffer[4096];
+		ZSTD_outBuffer outbuf{ buffer, sizeof(buffer), 0 };
+		size_t ret = ZSTD_decompressStream(ctx, &outbuf, &inbuf);
+		if (ZSTD_isError(ret)) {
+			fprintf(stderr, "ZSTD_decompressStream() failed: %s\n", ZSTD_getErrorName(ret));
+			exit(1);
+		}
+		output.append(buffer, outbuf.pos);
+		if (ret == 0 && inbuf.pos == inbuf.size) {
+			break;
+		}
+	}
+	return output;
+}
+
+void extract_paths_from_block(const string &block, vector<string> *paths)
+{
+	const char *ptr = block.data();
+	const char *end = ptr + block.size();
+	while (ptr < end) {
+		const char *term = static_cast<const char *>(memchr(ptr, '\0', end - ptr));
+		if (term == nullptr) {
+			break;
+		}
+		if (term != ptr) {
+			paths->emplace_back(ptr, term - ptr);
+		}
+		ptr = term + 1;
+	}
+}
+
+bool load_snapshot(const char *filename, Snapshot *snapshot)
+{
+	int fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		perror(filename);
+		return false;
+	}
+
+	Header hdr;
+	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0plocate", 8) != 0) {
+		fprintf(stderr, "%s: invalid or corrupt database\n", filename);
+		close(fd);
+		return false;
+	}
+	if (hdr.metadata_length_bytes == 0) {
+		fprintf(stderr, "%s: database does not contain metadata\n", filename);
+		close(fd);
+		return false;
+	}
+
+	vector<char> metadata_blob = read_blob(fd, hdr.metadata_offset_bytes, hdr.metadata_length_bytes);
+	string metadata_stream = decompress_stream(metadata_blob);
+	snapshot->metadata = parse_metadata_stream(metadata_stream);
+
+	uint32_t num_blocks = hdr.num_docids;
+	vector<uint64_t> offsets(num_blocks + 1);
+	size_t offsets_bytes = static_cast<size_t>(num_blocks + 1) * sizeof(uint64_t);
+	if (!pread_fully(fd, offsets.data(), offsets_bytes, hdr.filename_index_offset_bytes)) {
+		fprintf(stderr, "%s: failed reading filename index\n", filename);
+		close(fd);
+		return false;
+	}
+
+	ZSTD_DDict *ddict = nullptr;
+	vector<char> dictionary;
+	if (hdr.zstd_dictionary_length_bytes > 0) {
+		dictionary = read_blob(fd, hdr.zstd_dictionary_offset_bytes, hdr.zstd_dictionary_length_bytes);
+		ddict = ZSTD_createDDict(dictionary.data(), dictionary.size());
+		if (ddict == nullptr) {
+			fprintf(stderr, "%s: failed creating ZSTD dictionary\n", filename);
+			close(fd);
+			return false;
+		}
+	}
+
+	ZSTD_DCtx *ctx = ZSTD_createDCtx();
+	if (ctx == nullptr) {
+		fprintf(stderr, "Failed to create ZSTD context\n");
+		if (ddict != nullptr)
+			ZSTD_freeDDict(ddict);
+		close(fd);
+		return false;
+	}
+
+	for (uint32_t block = 0; block < num_blocks; ++block) {
+		uint64_t start = offsets[block];
+		uint64_t end = offsets[block + 1];
+		if (end < start) {
+			fprintf(stderr, "%s: corrupt filename index\n", filename);
+			ZSTD_freeDCtx(ctx);
+			if (ddict != nullptr)
+				ZSTD_freeDDict(ddict);
+			close(fd);
+			return false;
+		}
+		vector<char> compressed = read_blob(fd, start, end - start);
+		string block_data = decompress_block(compressed, ctx, ddict);
+		extract_paths_from_block(block_data, &snapshot->paths);
+	}
+
+	ZSTD_freeDCtx(ctx);
+	if (ddict != nullptr)
+		ZSTD_freeDDict(ddict);
+	close(fd);
+
+	if (snapshot->paths.size() != snapshot->metadata.size()) {
+		fprintf(stderr, "%s: mismatch between filenames (%zu) and metadata entries (%zu)\n",
+		        filename, snapshot->paths.size(), snapshot->metadata.size());
+		return false;
+	}
+	return true;
+}
+
 vector<HistoryEvent> parse_history(const string &data)
 {
 	vector<HistoryEvent> events;
 	const char *ptr = data.data();
 	const char *end = ptr + data.size();
 	while (ptr < end) {
-		if (end - ptr < 1 + sizeof(int64_t) + sizeof(int32_t) + sizeof(uint32_t)) {
+		if (static_cast<size_t>(end - ptr) < 1 + sizeof(int64_t) + sizeof(int32_t) + sizeof(uint32_t)) {
 			break;
 		}
 		HistoryEvent event;
@@ -200,7 +356,7 @@ vector<HistoryEvent> parse_history(const string &data)
 		uint32_t path_len;
 		memcpy(&path_len, ptr, sizeof(path_len));
 		ptr += sizeof(path_len);
-		if (end - ptr < path_len) {
+		if (static_cast<size_t>(end - ptr) < path_len) {
 			break;
 		}
 		event.path.assign(ptr, path_len);
@@ -216,66 +372,158 @@ vector<HistoryEvent> parse_history(const string &data)
 	return events;
 }
 
+bool load_history_events(const char *filename, vector<HistoryEvent> *events)
+{
+	int fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		perror(filename);
+		return false;
+	}
+
+	Header hdr;
+	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0plocate", 8) != 0) {
+		fprintf(stderr, "%s: invalid or corrupt database\n", filename);
+		close(fd);
+		return false;
+	}
+	if (hdr.history_length_bytes == 0 || hdr.max_version < 3) {
+		fprintf(stderr, "%s: no history log available\n", filename);
+		close(fd);
+		return false;
+	}
+
+	vector<char> history_blob = read_blob(fd, hdr.history_offset_bytes, hdr.history_length_bytes);
+	close(fd);
+
+	string decompressed = decompress_stream(history_blob);
+	*events = parse_history(decompressed);
+	return true;
+}
+
+vector<HistoryEvent> diff_snapshots(const Snapshot &old_snap, const Snapshot &new_snap)
+{
+	vector<HistoryEvent> events;
+	size_t i = 0, j = 0;
+	while (i < old_snap.paths.size() && j < new_snap.paths.size()) {
+		if (old_snap.paths[i] == new_snap.paths[j]) {
+			if (!metadata_equals(old_snap.metadata[i], new_snap.metadata[j])) {
+				HistoryEvent event;
+				event.kind = HistoryEventKind::Modified;
+				event.path = new_snap.paths[j];
+				event.old_metadata = old_snap.metadata[i];
+				event.new_metadata = new_snap.metadata[j];
+				events.push_back(move(event));
+			}
+			++i;
+			++j;
+		} else if (old_snap.paths[i] < new_snap.paths[j]) {
+			HistoryEvent event;
+			event.kind = HistoryEventKind::Removed;
+			event.path = old_snap.paths[i];
+			event.old_metadata = old_snap.metadata[i];
+			events.push_back(move(event));
+			++i;
+		} else {
+			HistoryEvent event;
+			event.kind = HistoryEventKind::Added;
+			event.path = new_snap.paths[j];
+			event.new_metadata = new_snap.metadata[j];
+			events.push_back(move(event));
+			++j;
+		}
+	}
+	while (i < old_snap.paths.size()) {
+		HistoryEvent event;
+		event.kind = HistoryEventKind::Removed;
+		event.path = old_snap.paths[i];
+		event.old_metadata = old_snap.metadata[i];
+		events.push_back(move(event));
+		++i;
+	}
+	while (j < new_snap.paths.size()) {
+		HistoryEvent event;
+		event.kind = HistoryEventKind::Added;
+		event.path = new_snap.paths[j];
+		event.new_metadata = new_snap.metadata[j];
+		events.push_back(move(event));
+		++j;
+	}
+	return events;
+}
+
 void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s PLOCATE_DB\n", prog);
+	fprintf(stderr, "Usage: %s [--history] PLOCATE_DB\n", prog);
+	fprintf(stderr, "       %s OLD_DB NEW_DB\n", prog);
+}
+
+bool run_history_mode(const char *db_path)
+{
+	vector<HistoryEvent> events;
+	if (!load_history_events(db_path, &events)) {
+		return false;
+	}
+	if (events.empty()) {
+		printf("No history events recorded in %s.\n", db_path);
+		return true;
+	}
+	for (const HistoryEvent &event : events) {
+		print_event(event);
+	}
+	return true;
+}
+
+bool run_diff_mode(const char *old_db, const char *new_db)
+{
+	Snapshot old_snap, new_snap;
+	if (!load_snapshot(old_db, &old_snap) || !load_snapshot(new_db, &new_snap)) {
+		return false;
+	}
+	vector<HistoryEvent> events = diff_snapshots(old_snap, new_snap);
+	if (events.empty()) {
+		printf("No differences between %s and %s.\n", old_db, new_db);
+		return true;
+	}
+	for (const HistoryEvent &event : events) {
+		print_event(event);
+	}
+	return true;
 }
 
 }  // namespace
 
 int main(int argc, char **argv)
 {
-	if (argc != 2) {
+	bool history_mode = false;
+	vector<const char *> dbs;
+	for (int i = 1; i < argc; ++i) {
+		if (strcmp(argv[i], "--history") == 0) {
+			history_mode = true;
+		} else if (strcmp(argv[i], "--help") == 0) {
+			usage(argv[0]);
+			return EXIT_SUCCESS;
+		} else {
+			dbs.push_back(argv[i]);
+		}
+	}
+
+	if (dbs.empty()) {
 		usage(argv[0]);
 		return EXIT_FAILURE;
 	}
 
-	const char *path = argv[1];
-	int fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		perror(path);
-		return EXIT_FAILURE;
+	if (history_mode || dbs.size() == 1) {
+		if (dbs.size() != 1) {
+			usage(argv[0]);
+			return EXIT_FAILURE;
+		}
+		return run_history_mode(dbs[0]) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
-	Header hdr;
-	if (!pread_all(fd, &hdr, sizeof(hdr), 0)) {
-		fprintf(stderr, "%s: failed to read header\n", path);
-		close(fd);
-		return EXIT_FAILURE;
-	}
-	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
-		fprintf(stderr, "%s: not a plocate database\n", path);
-		close(fd);
-		return EXIT_FAILURE;
-	}
-	if (hdr.version < 1 || hdr.max_version < 3) {
-		fprintf(stderr, "%s: database does not contain history data (version=%u max_version=%u)\n",
-		        path, hdr.version, hdr.max_version);
-		close(fd);
-		return EXIT_FAILURE;
-	}
-	if (hdr.history_length_bytes == 0) {
-		fprintf(stderr, "%s: history log not found in this database\n", path);
-		close(fd);
-		return EXIT_FAILURE;
+	if (dbs.size() == 2) {
+		return run_diff_mode(dbs[0], dbs[1]) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
-	vector<char> compressed(hdr.history_length_bytes);
-	if (!pread_all(fd, compressed.data(), compressed.size(), hdr.history_offset_bytes)) {
-		fprintf(stderr, "%s: failed reading history log\n", path);
-		close(fd);
-		return EXIT_FAILURE;
-	}
-	close(fd);
-
-	string decompressed = decompress_history(compressed);
-	vector<HistoryEvent> events = parse_history(decompressed);
-	if (events.empty()) {
-		printf("History log is empty.\n");
-		return EXIT_SUCCESS;
-	}
-	for (const HistoryEvent &event : events) {
-		print_event(event);
-	}
-	return EXIT_SUCCESS;
+	usage(argv[0]);
+	return EXIT_FAILURE;
 }
