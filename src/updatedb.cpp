@@ -1192,6 +1192,8 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 	closedir(dir);
 	return 0;
 }
+	return 0;
+}
 
 int main(int argc, char **argv)
 {
