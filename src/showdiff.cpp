@@ -30,6 +30,12 @@ struct Snapshot {
 	MetadataHashKind hash_kind = MetadataHashKind::None;
 };
 
+FileMetadata metadata_from_stat(const struct stat &sb);
+bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out);
+string normalize_root(string root);
+string map_db_to_real(const string &root, const string &db_path);
+string map_real_to_db(const string &root, const string &real_path);
+
 bool pread_fully(int fd, void *buf, size_t len, off_t offset)
 {
 	char *ptr = static_cast<char *>(buf);

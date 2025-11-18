@@ -14,12 +14,12 @@ public:
 	MetadataHash finalize();
 	MetadataHashKind get_kind() const { return kind; }
 
-private:
 	void update_xxh64(const uint8_t *data, size_t len);
 	MetadataHash finalize_xxh64();
 	void update_sha256(const uint8_t *data, size_t len);
 	MetadataHash finalize_sha256();
 
+private:
 	MetadataHashKind kind;
 	bool finished = false;
 
