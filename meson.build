@@ -43,6 +43,10 @@ executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp
 	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))
+executable('plocate-showdiff', ['showdiff.cpp'],
+	dependencies: [zstddep],
+	install: true,
+	install_dir: get_option('sbindir'))
 
 conf_data = configuration_data()
 conf_data.set('PROCESSED_BY_MESON', '1')

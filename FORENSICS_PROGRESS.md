@@ -24,6 +24,7 @@ Augment plocate with optional forensic metadata capture, historical change track
 4. **Runtime & diff tooling** (pending)  
    - Implement `showdiff` to compare two DBs or DB vs. live FS, surfacing added/removed/modified entries using metadata.  
    - Add plocate CLI toggles to read/display metadata only on demand.
+   - Status: First iteration of `plocate-showdiff` prints the per-run history log; future work will add DB-vs-DB comparisons and richer output.
 5. **Docs, tests, benchmarks** (pending)  
    - Document workflows (`updatedb --metadata --history-depth`, `showdiff old.db new.db`).  
    - Add automated tests validating metadata accuracy and diff output; benchmark to confirm negligible impact when metadata disabled.
