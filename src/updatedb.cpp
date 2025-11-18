@@ -449,7 +449,7 @@ private:
 	off_t compressed_metadata_pos = 0;
 	string compressed_metadata;
 	string current_metadata_block;
-	const char *current_metadata_ptr = nullptr, *current_metadata_end = nullptr;
+	size_t current_metadata_offset = 0;
 	FileMetadata last_metadata_record;
 
 	// Used in one-shot mode, repeatedly.
@@ -542,8 +542,6 @@ ExistingDB::ExistingDB(int fd)
 		metadata_available = true;
 		compressed_metadata_pos = hdr.metadata_offset_bytes;
 		metadata_ctx = ZSTD_createDCtx();
-		current_metadata_ptr = current_metadata_block.data();
-		current_metadata_end = current_metadata_block.data();
 	}
 
 	ctx = ZSTD_createDCtx();
@@ -562,7 +560,14 @@ bool ExistingDB::ensure_metadata_bytes(size_t need)
 	if (!metadata_available) {
 		return false;
 	}
-	while (size_t(current_metadata_end - current_metadata_ptr) < need) {
+	while (true) {
+		if (current_metadata_offset > current_metadata_block.size()) {
+			return false;
+		}
+		size_t available = current_metadata_block.size() - current_metadata_offset;
+		if (available >= need) {
+			break;
+		}
 		if (!refill_metadata_block()) {
 			return false;
 		}
@@ -576,9 +581,12 @@ bool ExistingDB::refill_metadata_block()
 		return false;
 	}
 
-	if (current_metadata_ptr != nullptr) {
-		const size_t consumed = current_metadata_ptr - current_metadata_block.data();
-		current_metadata_block.erase(current_metadata_block.begin(), current_metadata_block.begin() + consumed);
+	if (current_metadata_offset > current_metadata_block.size()) {
+		current_metadata_block.clear();
+		current_metadata_offset = 0;
+	} else if (current_metadata_offset != 0) {
+		current_metadata_block.erase(current_metadata_block.begin(), current_metadata_block.begin() + current_metadata_offset);
+		current_metadata_offset = 0;
 	}
 
 	size_t existing_data = current_metadata_block.size();
@@ -627,9 +635,7 @@ bool ExistingDB::refill_metadata_block()
 		return refill_metadata_block();
 	}
 
-	current_metadata_ptr = current_metadata_block.data();
-	current_metadata_end = current_metadata_block.data() + current_metadata_block.size();
-	return current_metadata_ptr != current_metadata_end;
+	return !current_metadata_block.empty();
 }
 
 void ExistingDB::read_next_metadata_record()
@@ -646,8 +652,8 @@ void ExistingDB::read_next_metadata_record()
 	}
 
 	FileMetadata meta;
-	meta.enabled = (*reinterpret_cast<const unsigned char *>(current_metadata_ptr)) != 0;
-	++current_metadata_ptr;
+	meta.enabled = (*reinterpret_cast<const unsigned char *>(current_metadata_block.data() + current_metadata_offset)) != 0;
+	++current_metadata_offset;
 
 	if (!meta.enabled) {
 		last_metadata_record = meta;
@@ -665,8 +671,8 @@ void ExistingDB::read_next_metadata_record()
 	}
 
 	auto read_scalar = [this](auto *dst) {
-		memcpy(dst, current_metadata_ptr, sizeof(*dst));
-		current_metadata_ptr += sizeof(*dst);
+		memcpy(dst, current_metadata_block.data() + current_metadata_offset, sizeof(*dst));
+		current_metadata_offset += sizeof(*dst);
 	};
 
 	read_scalar(&meta.mode);
@@ -680,8 +686,10 @@ void ExistingDB::read_next_metadata_record()
 	read_scalar(&meta.atime.sec);
 	read_scalar(&meta.atime.nsec);
 
-	meta.hash.kind = static_cast<MetadataHashKind>(static_cast<unsigned char>(*current_metadata_ptr++));
-	uint8_t hash_len = static_cast<uint8_t>(*current_metadata_ptr++);
+	meta.hash.kind = static_cast<MetadataHashKind>(static_cast<unsigned char>(*(current_metadata_block.data() + current_metadata_offset)));
+	++current_metadata_offset;
+	uint8_t hash_len = static_cast<uint8_t>(*(current_metadata_block.data() + current_metadata_offset));
+	++current_metadata_offset;
 	if (!ensure_metadata_bytes(hash_len)) {
 		last_metadata_record = {};
 		metadata_available = false;
@@ -689,9 +697,9 @@ void ExistingDB::read_next_metadata_record()
 	}
 	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
 	if (meta.hash.length != 0) {
-		memcpy(meta.hash.value.data(), current_metadata_ptr, meta.hash.length);
+		memcpy(meta.hash.value.data(), current_metadata_block.data() + current_metadata_offset, meta.hash.length);
 	}
-	current_metadata_ptr += hash_len;
+	current_metadata_offset += hash_len;
 	last_metadata_record = meta;
 }
 
