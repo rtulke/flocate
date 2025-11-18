@@ -1,3 +1,13 @@
+flocate 1.2.0, November 18th, 2025
+  - split new project named flocate based on plocate
+    new directory/file structure by Robert Tulke
+    new feature hashing algo for forenesics
+    new feature retain the latest N runs in the database
+    new feature compare db's and live system
+    new feature compare db with db
+    new tool showdiff to compare db with db and db with live system
+    new manpages
+
 plocate 1.1.23, November 24th, 2024
 
   - Various improvements, in particular to the systemd unit file.
