@@ -39,7 +39,7 @@ For Debian GNU/Linux based Systems
 
 ```sh
 # install meson and ninja
-sudo apt install meson ninja-build
+sudo apt install meson ninja-build cmake cmake-data
 ```
 
 ```sh
