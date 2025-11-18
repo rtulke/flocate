@@ -320,8 +320,8 @@ void EncodingCorpus::add_file(const FileRecord &record)
 			dir_times.push_back('\0');
 		} else {
 			dir_times.push_back('\1');
-			dir_times.append(reinterpret_cast<char *>(&dt.sec), sizeof(dt.sec));
-			dir_times.append(reinterpret_cast<char *>(&dt.nsec), sizeof(dt.nsec));
+			dir_times.append(reinterpret_cast<const char *>(&dt.sec), sizeof(dt.sec));
+			dir_times.append(reinterpret_cast<const char *>(&dt.nsec), sizeof(dt.nsec));
 		}
 		compress_dir_times(/*allowed_slop=*/4096);
 	}
