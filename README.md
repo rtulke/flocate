@@ -35,6 +35,13 @@ database against a live filesystem tree.
 Dependencies: a C++17 compiler, Meson ≥ 0.61, Ninja, libzstd, and optional
 liburing.
 
+For Debian GNU/Linux based Systems
+
+```sh
+# install meson and ninja
+sudo apt install meson ninja-build
+```
+
 ```sh
 # configure once (pass MESON_ARGS="--prefix=/opt/flocate" if needed)
 make config
