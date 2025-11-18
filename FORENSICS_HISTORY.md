@@ -1,16 +1,14 @@
 # Forensic Hash & History Plan
 
 ## Hash Collection Strategy
-- **Scope**: Hash regular files (symlinks and special files store size/metadata only). Default algorithm `xxHash64` for speed; optional `SHA-256` when `--metadata-hash=sha256` is supplied.
+- **Scope**: Hash regular files (symlinks and special files store size/metadata only). Default algorithm `xxh64` for speed; optional `sha256` via `--metadata-hash=sha256`.
 - **Configuration**:
-  - `conf_metadata_hash` enum (`none`, `xxh64`, `sha256`).
-  - CLI flag `--metadata-hash=<algo>`; `updatedb.conf` entry mirrors it.
+  - `conf_metadata_hash_kind` accepts `none`, `xxh64`, `sha256` from CLI or `METADATA_HASH` in `updatedb.conf`.
   - Hashing disabled by default to preserve current performance.
 - **Implementation**:
-  - Reuse `MetadataHashKind` in `FileMetadata`.
-  - Add helper `compute_file_hash(int dirfd, const string &name, MetadataHashKind algo)` to avoid extra path joins.
-  - Hash stored inline in metadata stream (already serialized), truncated to 8 bytes for xxHash64 and 32 bytes for SHA-256.
-  - Error handling: fallback to `HashKind::None` with warning; never abort `updatedb`.
+  - `MetadataHashBuilder` streams either xxHash64 or SHA-256 over file contents read via `openat`.
+  - Results live inside `FileMetadata.hash` (8 bytes for xxHash64, 32 bytes for SHA-256) and are serialized alongside the rest of the metadata stream.
+  - Failures (permission errors, short reads) clear the hash back to `None` and optionally log via `conf_verbose`.
 
 ## History Log Layout
 - **Purpose**: Track adds/removals/metadata changes per updatedb run for consumption by `showdiff`.

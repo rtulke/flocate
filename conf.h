@@ -23,6 +23,8 @@ any later version.
 #ifndef CONF_H__
 #define CONF_H__
 
+#include "metadata.h"
+
 #include <stddef.h>
 #include <string>
 #include <vector>
@@ -57,6 +59,7 @@ extern bool conf_verbose;
 
 /* Configuration representation for the database configuration block */
 extern std::string conf_block;
+extern MetadataHashKind conf_metadata_hash_kind;
 
 /* Parse /etc/updatedb.conf and command-line arguments ARGC, ARGV.
    Exit on error or --help, --version. */

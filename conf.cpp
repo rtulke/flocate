@@ -70,6 +70,7 @@ string conf_block;
 
 int conf_block_size = 32;
 bool use_debug = false;
+MetadataHashKind conf_metadata_hash_kind = MetadataHashKind::None;
 
 /* Parse a STR, store the parsed boolean value to DEST;
    return 0 if OK, -1 on error. */
@@ -85,6 +86,41 @@ parse_bool(bool *dest, const char *str)
 		return 0;
 	}
 	return -1;
+}
+
+static bool parse_metadata_hash_kind(MetadataHashKind *dest, const std::string &value)
+{
+	string lower;
+	lower.reserve(value.size());
+	for (char c : value) {
+		lower.push_back(tolower(static_cast<unsigned char>(c)));
+	}
+	if (lower == "none") {
+		*dest = MetadataHashKind::None;
+		return true;
+	}
+	if (lower == "xxh64" || lower == "xxhash64" || lower == "fast") {
+		*dest = MetadataHashKind::XxHash64;
+		return true;
+	}
+	if (lower == "sha256") {
+		*dest = MetadataHashKind::Sha256;
+		return true;
+	}
+	return false;
+}
+
+static const char *metadata_hash_kind_to_string(MetadataHashKind kind)
+{
+	switch (kind) {
+	case MetadataHashKind::None:
+		return "none";
+	case MetadataHashKind::XxHash64:
+		return "xxh64";
+	case MetadataHashKind::Sha256:
+		return "sha256";
+	}
+	return "unknown";
 }
 
 /* String list handling */
@@ -139,7 +175,8 @@ enum {
 	UCT_PRUNE_BIND_MOUNTS,
 	UCT_PRUNEFS,
 	UCT_PRUNENAMES,
-	UCT_PRUNEPATHS
+	UCT_PRUNEPATHS,
+	UCT_METADATA_HASH
 };
 
 /* Return next token from uc_file; for UCT_IDENTIFIER, UCT_QUOTED or keywords,
@@ -199,6 +236,8 @@ uc_lex(void)
 			return UCT_PRUNENAMES;
 		if (uc_lex_buf == "PRUNEPATHS")
 			return UCT_PRUNEPATHS;
+		if (uc_lex_buf == "METADATA_HASH")
+			return UCT_METADATA_HASH;
 		return UCT_IDENTIFIER;
 	}
 	}
@@ -208,7 +247,7 @@ uc_lex(void)
 static void
 parse_updatedb_conf(void)
 {
-	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths;
+	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash;
 
 	uc_file = fopen(UPDATEDB_CONF, "r");
 	if (uc_file == NULL) {
@@ -224,6 +263,7 @@ parse_updatedb_conf(void)
 	had_prunefs = false;
 	had_prunenames = false;
 	had_prunepaths = false;
+	had_metadata_hash = false;
 	for (;;) {
 		bool *had_var;
 		int var_token, token;
@@ -250,6 +290,10 @@ parse_updatedb_conf(void)
 
 		case UCT_PRUNEPATHS:
 			had_var = &had_prunepaths;
+			break;
+
+		case UCT_METADATA_HASH:
+			had_var = &had_metadata_hash;
 			break;
 
 		case UCT_IDENTIFIER:
@@ -293,7 +337,13 @@ parse_updatedb_conf(void)
 			var_add_values(&conf_prunenames, uc_lex_buf.c_str());
 		else if (var_token == UCT_PRUNEPATHS)
 			var_add_values(&conf_prunepaths, uc_lex_buf.c_str());
-		else
+		else if (var_token == UCT_METADATA_HASH) {
+			if (!parse_metadata_hash_kind(&conf_metadata_hash_kind, uc_lex_buf)) {
+				fprintf(stderr, "%s:%u: invalid value `%s' of METADATA_HASH\n",
+				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+				exit(EXIT_FAILURE);
+			}
+		} else
 			abort();
 		token = uc_lex();
 		if (token != UCT_EOL && token != UCT_EOF) {
@@ -337,6 +387,8 @@ help(void)
 	         "                                 `%s')\n"
 	         "  -b, --block-size SIZE          number of filenames to store\n"
 	         "                                 in each block (default 32)\n"
+	         "      --metadata-hash ALGO       hash regular files (none, xxh64,\n"
+	         "                                 sha256; default \"none\")\n"
 	         "      --prune-bind-mounts FLAG   omit bind mounts (default "
 	         "\"no\")\n"
 	         "      --prunefs FS               filesystems to omit from "
@@ -384,7 +436,8 @@ static void
 parse_arguments(int argc, char *argv[])
 {
 	enum { OPT_DEBUG_PRUNING = CHAR_MAX + 1,
-	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2 };
+	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2,
+	       OPT_METADATA_HASH = CHAR_MAX + 3 };
 
 	static const struct option options[] = {
 		{ "add-prunefs", required_argument, NULL, 'f' },
@@ -400,6 +453,7 @@ parse_arguments(int argc, char *argv[])
 		{ "prunenames", required_argument, NULL, 'N' },
 		{ "prunepaths", required_argument, NULL, 'P' },
 		{ "require-visibility", required_argument, NULL, 'l' },
+		{ "metadata-hash", required_argument, NULL, OPT_METADATA_HASH },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "version", no_argument, NULL, 'V' },
 		{ "block-size", required_argument, 0, 'b' },
@@ -504,6 +558,13 @@ parse_arguments(int argc, char *argv[])
 		case OPT_ADD_SINGLE_PRUNEPATH:
 			prunepaths_changed = true;
 			conf_prunepaths.push_back(optarg);
+			break;
+		case OPT_METADATA_HASH:
+			if (!parse_metadata_hash_kind(&conf_metadata_hash_kind, optarg)) {
+				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
+				        program_invocation_name, optarg, "metadata-hash");
+				exit(EXIT_FAILURE);
+			}
 			break;
 
 		case 'f':
@@ -612,6 +673,10 @@ gen_conf_block(void)
 	gen_conf_block_string_list(&conf_block, &conf_prunenames);
 	CONST("prunepaths");
 	gen_conf_block_string_list(&conf_block, &conf_prunepaths);
+	CONST("metadata_hash");
+	conf_block += metadata_hash_kind_to_string(conf_metadata_hash_kind);
+	conf_block.push_back('\0');
+	conf_block.push_back('\0');
 	/* scan_root is contained directly in the header */
 	/* conf_output, conf_verbose are not relevant */
 #undef CONST

@@ -87,6 +87,16 @@ in which the directory would be reported by
 By default, no paths are skipped.
 
 .TP
+\fBMETADATA_HASH\fR
+Specifies which hash algorithm to run on regular files as they are indexed.
+Accepted values are \fBnone\fR, \fBxxh64\fR and \fBsha256\fR.
+The default is \fBnone\fR, which avoids hashing to keep
+.BR updatedb (8)
+fast.
+Hash values are stored in the database metadata and can be consumed
+by auxiliary tools (for example forensic diffing utilities).
+
+.TP
 \fBPRUNE_BIND_MOUNTS\fR
 One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
 If

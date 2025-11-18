@@ -29,6 +29,7 @@ any later version.
 #include "db.h"
 #include "dprintf.h"
 #include "io_uring_engine.h"
+#include "metadata_hash.h"
 #include "lib.h"
 
 #include <algorithm>
@@ -862,6 +863,15 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			e.dt = get_dirtime_from_stat(sb);
 		} else {
 			e.dt = not_a_dir;
+		}
+
+		if (conf_metadata_hash_kind != MetadataHashKind::None && S_ISREG(sb.st_mode)) {
+			if (!compute_file_hash_at(parent_fd, e.name, conf_metadata_hash_kind, &e.metadata.hash)) {
+				if (conf_verbose) {
+					perror((path_plus_slash + e.name).c_str());
+				}
+				e.metadata.hash = MetadataHash{};
+			}
 		}
 	}
 
