@@ -30,6 +30,9 @@ private:
 		static constexpr uint64_t Prime4 =  9650029242287828579ULL;
 		static constexpr uint64_t Prime5 =  2870177450012600261ULL;
 
+		static uint64_t xxhash_round(uint64_t acc, uint64_t input);
+		static uint64_t xxhash_merge_round(uint64_t acc, uint64_t val);
+
 		uint64_t total_len = 0;
 		uint64_t v1 = Prime1 + Prime2;
 		uint64_t v2 = Prime2;

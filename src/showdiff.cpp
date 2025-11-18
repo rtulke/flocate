@@ -474,6 +474,89 @@ vector<HistoryEvent> diff_snapshots(const Snapshot &old_snap, const Snapshot &ne
 	return events;
 }
 
+FileMetadata metadata_from_stat(const struct stat &sb)
+{
+	FileMetadata meta;
+	meta.enabled = true;
+	meta.mode = sb.st_mode;
+	meta.uid = sb.st_uid;
+	meta.gid = sb.st_gid;
+	meta.size = sb.st_size;
+	meta.mtime = dir_time{ sb.st_mtim.tv_sec, int32_t(sb.st_mtim.tv_nsec) };
+	meta.ctime = dir_time{ sb.st_ctim.tv_sec, int32_t(sb.st_ctim.tv_nsec) };
+	meta.atime = dir_time{ sb.st_atim.tv_sec, int32_t(sb.st_atim.tv_nsec) };
+	return meta;
+}
+
+bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out)
+{
+	if (kind == MetadataHashKind::None || out == nullptr) {
+		if (out != nullptr) {
+			*out = MetadataHash{};
+		}
+		return true;
+	}
+	MetadataHashBuilder builder(kind);
+	int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+	if (fd == -1) {
+		return false;
+	}
+	vector<char> buffer(1 << 15);
+	while (true) {
+		ssize_t ret = read(fd, buffer.data(), buffer.size());
+		if (ret == 0) {
+			break;
+		}
+		if (ret < 0) {
+			int saved_errno = errno;
+			close(fd);
+			errno = saved_errno;
+			return false;
+		}
+		builder.update(buffer.data(), static_cast<size_t>(ret));
+	}
+	close(fd);
+	*out = builder.finalize();
+	return true;
+}
+
+string normalize_root(string root)
+{
+	if (root.empty() || root == "/") {
+		return "";
+	}
+	while (root.size() > 1 && root.back() == '/') {
+		root.pop_back();
+	}
+	return root;
+}
+
+string map_db_to_real(const string &root, const string &db_path)
+{
+	if (root.empty() || db_path.empty() || db_path[0] != '/') {
+		return db_path;
+	}
+	return root + db_path;
+}
+
+string map_real_to_db(const string &root, const string &real_path)
+{
+	if (root.empty()) {
+		return real_path;
+	}
+	if (real_path.compare(0, root.size(), root) != 0) {
+		return "";
+	}
+	string suffix = real_path.substr(root.size());
+	if (suffix.empty()) {
+		return "/";
+	}
+	if (suffix[0] != '/') {
+		suffix.insert(suffix.begin(), '/');
+	}
+	return suffix;
+}
+
 vector<HistoryEvent> diff_with_live(const Snapshot &snapshot, const string &root)
 {
 	string normalized_root = normalize_root(root);
@@ -622,89 +705,6 @@ bool run_live_mode(const char *db_path, const char *root)
 		print_event(event);
 	}
 	return true;
-}
-
-FileMetadata metadata_from_stat(const struct stat &sb)
-{
-	FileMetadata meta;
-	meta.enabled = true;
-	meta.mode = sb.st_mode;
-	meta.uid = sb.st_uid;
-	meta.gid = sb.st_gid;
-	meta.size = sb.st_size;
-	meta.mtime = dir_time{ sb.st_mtim.tv_sec, int32_t(sb.st_mtim.tv_nsec) };
-	meta.ctime = dir_time{ sb.st_ctim.tv_sec, int32_t(sb.st_ctim.tv_nsec) };
-	meta.atime = dir_time{ sb.st_atim.tv_sec, int32_t(sb.st_atim.tv_nsec) };
-	return meta;
-}
-
-bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out)
-{
-	if (kind == MetadataHashKind::None || out == nullptr) {
-		if (out != nullptr) {
-			*out = MetadataHash{};
-		}
-		return true;
-	}
-	MetadataHashBuilder builder(kind);
-	int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-	if (fd == -1) {
-		return false;
-	}
-	vector<char> buffer(1 << 15);
-	while (true) {
-		ssize_t ret = read(fd, buffer.data(), buffer.size());
-		if (ret == 0) {
-			break;
-		}
-		if (ret < 0) {
-			int saved_errno = errno;
-			close(fd);
-			errno = saved_errno;
-			return false;
-		}
-		builder.update(buffer.data(), static_cast<size_t>(ret));
-	}
-	close(fd);
-	*out = builder.finalize();
-	return true;
-}
-
-string normalize_root(string root)
-{
-	if (root.empty() || root == "/") {
-		return "";
-	}
-	while (root.size() > 1 && root.back() == '/') {
-		root.pop_back();
-	}
-	return root;
-}
-
-string map_db_to_real(const string &root, const string &db_path)
-{
-	if (root.empty() || db_path.empty() || db_path[0] != '/') {
-		return db_path;
-	}
-	return root + db_path;
-}
-
-string map_real_to_db(const string &root, const string &real_path)
-{
-	if (root.empty()) {
-		return real_path;
-	}
-	if (real_path.compare(0, root.size(), root) != 0) {
-		return "";
-	}
-	string suffix = real_path.substr(root.size());
-	if (suffix.empty()) {
-		return "/";
-	}
-	if (suffix[0] != '/') {
-		suffix.insert(suffix.begin(), '/');
-	}
-	return suffix;
 }
 
 }  // namespace

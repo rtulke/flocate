@@ -607,11 +607,13 @@ bool ExistingDB::refill_metadata_block()
 	current_metadata_block.resize(existing_data + outbuf.pos);
 
 	if (outbuf.pos == 0 && inbuf.pos == 0) {
-		if (compressed_metadata_pos >= hdr.metadata_offset_bytes + hdr.metadata_length_bytes) {
+		const uint64_t metadata_end = hdr.metadata_offset_bytes + hdr.metadata_length_bytes;
+		const uint64_t comp_pos = static_cast<uint64_t>(compressed_metadata_pos);
+		if (comp_pos >= metadata_end) {
 			metadata_available = false;
 			return false;
 		}
-		size_t bytes_to_read = min<size_t>(4096, hdr.metadata_offset_bytes + hdr.metadata_length_bytes - compressed_metadata_pos);
+		size_t bytes_to_read = min<size_t>(4096, metadata_end - comp_pos);
 		char buf[4096];
 		if (!try_complete_pread(fd, buf, bytes_to_read, compressed_metadata_pos)) {
 			if (conf_verbose) {
@@ -1185,9 +1187,9 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 	if (dir == nullptr) {
 		close(fd);
-	} else {
-		closedir(dir);
+		return 0;
 	}
+	closedir(dir);
 	return 0;
 }
 

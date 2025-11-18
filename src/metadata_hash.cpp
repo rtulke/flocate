@@ -51,23 +51,23 @@ inline uint32_t read32(const uint8_t *ptr)
 	return val;
 }
 
-inline uint64_t xxhash_round(uint64_t acc, uint64_t input)
+}  // namespace
+
+uint64_t MetadataHashBuilder::XxHash64State::xxhash_round(uint64_t acc, uint64_t input)
 {
-	acc += input * MetadataHashBuilder::XxHash64State::Prime2;
+	acc += input * Prime2;
 	acc = rotl64(acc, 31);
-	acc *= MetadataHashBuilder::XxHash64State::Prime1;
+	acc *= Prime1;
 	return acc;
 }
 
-inline uint64_t xxhash_merge_round(uint64_t acc, uint64_t val)
+uint64_t MetadataHashBuilder::XxHash64State::xxhash_merge_round(uint64_t acc, uint64_t val)
 {
 	val = xxhash_round(0, val);
 	acc ^= val;
-	acc = acc * MetadataHashBuilder::XxHash64State::Prime1 + MetadataHashBuilder::XxHash64State::Prime4;
+	acc = acc * Prime1 + Prime4;
 	return acc;
 }
-
-}  // namespace
 
 void MetadataHashBuilder::XxHash64State::reset(uint64_t seed)
 {
