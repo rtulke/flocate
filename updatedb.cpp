@@ -157,6 +157,7 @@ struct entry {
 	dir_time dt = unknown_dir_time;
 	dir_time db_modified = unknown_dir_time;
 	dev_t dev;
+	FileMetadata metadata;
 };
 
 bool filesystem_is_excluded(const string &path)
@@ -210,6 +211,20 @@ dir_time get_dirtime_from_stat(const struct stat &buf)
 	} else {
 		return dt;
 	}
+}
+
+FileMetadata metadata_from_stat(const struct stat &buf)
+{
+	FileMetadata metadata;
+	metadata.enabled = true;
+	metadata.mode = buf.st_mode;
+	metadata.uid = buf.st_uid;
+	metadata.gid = buf.st_gid;
+	metadata.size = buf.st_size;
+	metadata.mtime = dir_time{ buf.st_mtim.tv_sec, int32_t(buf.st_mtim.tv_nsec) };
+	metadata.ctime = dir_time{ buf.st_ctim.tv_sec, int32_t(buf.st_ctim.tv_nsec) };
+	metadata.atime = dir_time{ buf.st_atim.tv_sec, int32_t(buf.st_atim.tv_nsec) };
+	return metadata;
 }
 
 // Represents the old database we are updating.
@@ -648,11 +663,11 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			return a.name < b.name;
 		});
 
-		// Load directory modification times from the old database.
-		auto db_it = db_entries.begin();
-		for (entry &e : entries) {
-			for (; db_it != db_entries.end(); ++db_it) {
-				if (e.name < db_it->name) {
+	// Load directory modification times from the old database.
+	auto db_it = db_entries.begin();
+	for (entry &e : entries) {
+		for (; db_it != db_entries.end(); ++db_it) {
+			if (e.name < db_it->name) {
 					break;
 				}
 				if (e.name == db_it->name) {
@@ -660,6 +675,20 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 					break;
 				}
 			}
+		}
+	}
+
+	const int parent_fd = (dir != nullptr) ? dirfd(dir) : fd;
+	for (entry &e : entries) {
+		struct stat sb;
+		if (fstatat(parent_fd, e.name.c_str(), &sb, AT_SYMLINK_NOFOLLOW) != 0) {
+			continue;
+		}
+		e.metadata = metadata_from_stat(sb);
+		if (S_ISDIR(sb.st_mode)) {
+			e.dt = get_dirtime_from_stat(sb);
+		} else {
+			e.dt = not_a_dir;
 		}
 	}
 
@@ -684,7 +713,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			continue;
 		}
 
-		e.fd = opendir_noatime(fd, e.name.c_str());
+		e.fd = opendir_noatime(parent_fd, e.name.c_str());
 		if (e.fd == -1) {
 			if (errno == EMFILE || errno == ENFILE) {
 				// The admin probably wants to know about this.
@@ -722,6 +751,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			exit(1);
 		}
 
+		e.metadata = metadata_from_stat(buf);
 		e.dev = buf.st_dev;
 		if (buf.st_dev != parent_dev) {
 			if (filesystem_is_excluded(path_plus_slash + e.name)) {
@@ -736,8 +766,12 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 	// Actually add all the entries we figured out dates for above.
 	for (const entry &e : entries) {
-		corpus->add_file(path_plus_slash + e.name, e.dt);
-		dict_builder->add_file(path_plus_slash + e.name, e.dt);
+		FileRecord record;
+		record.path = path_plus_slash + e.name;
+		record.dir_timestamp = e.dt;
+		record.metadata = e.metadata;
+		corpus->add_file(record);
+		dict_builder->add_file(record);
 	}
 
 	// Now scan subdirectories.

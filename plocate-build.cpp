@@ -84,10 +84,16 @@ void handle_directory(FILE *fp, DatabaseReceiver *receiver)
 		int type = getc(fp);
 		if (type == DBE_NORMAL) {
 			string filename = read_cstr(fp);
-			receiver->add_file(dir_path + "/" + filename, unknown_dir_time);
+			FileRecord record;
+			record.path = dir_path + "/" + filename;
+			record.dir_timestamp = unknown_dir_time;
+			receiver->add_file(record);
 		} else if (type == DBE_DIRECTORY) {
 			string dirname = read_cstr(fp);
-			receiver->add_file(dir_path + "/" + dirname, unknown_dir_time);
+			FileRecord record;
+			record.path = dir_path + "/" + dirname;
+			record.dir_timestamp = unknown_dir_time;
+			receiver->add_file(record);
 		} else {
 			return;  // Probably end.
 		}
@@ -117,7 +123,10 @@ void read_plaintext(FILE *fp, DatabaseReceiver *receiver)
 		}
 		if (!s.empty() && s.back() == '\n')
 			s.pop_back();
-		receiver->add_file(move(s), unknown_dir_time);
+		FileRecord record;
+		record.path = move(s);
+		record.dir_timestamp = unknown_dir_time;
+		receiver->add_file(record);
 	}
 }
 

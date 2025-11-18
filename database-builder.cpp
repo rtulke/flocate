@@ -108,13 +108,13 @@ void PostingListBuilder::write_header(uint32_t docid)
 	encoded.insert(encoded.end(), buf, end);
 }
 
-void DictionaryBuilder::add_file(string filename, dir_time)
+void DictionaryBuilder::add_file(const FileRecord &record)
 {
 	if (keep_current_block) {  // Only bother saving the filenames if we're actually keeping the block.
 		if (!current_block.empty()) {
 			current_block.push_back('\0');
 		}
-		current_block += filename;
+		current_block += record.path;
 	}
 	if (++num_files_in_block == block_size) {
 		flush_block();
@@ -175,7 +175,7 @@ public:
 	EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times);
 	~EncodingCorpus();
 
-	void add_file(std::string filename, dir_time dt) override;
+	void add_file(const FileRecord &record) override;
 	void flush_block() override;
 	void finish() override;
 
@@ -238,18 +238,19 @@ EncodingCorpus::~EncodingCorpus()
 	}
 }
 
-void EncodingCorpus::add_file(string filename, dir_time dt)
+void EncodingCorpus::add_file(const FileRecord &record)
 {
 	++num_files;
 	if (!current_block.empty()) {
 		current_block.push_back('\0');
 	}
-	current_block += filename;
+	current_block += record.path;
 	if (++num_files_in_block == block_size) {
 		flush_block();
 	}
 
 	if (store_dir_times) {
+		const dir_time &dt = record.dir_timestamp;
 		if (dt.sec == -1) {
 			// Not a directory.
 			dir_times.push_back('\0');
