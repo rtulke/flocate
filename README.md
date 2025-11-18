@@ -53,8 +53,10 @@ make
 make test
 
 # install / uninstall
-sudo make install
-sudo make uninstall
+sudo groupadd flocate
+sudo ninja -C build install
+# sudo make install
+# sudo make uninstall
 ```
 
 All targets wrap Meson, so you can reconfigure with `make config` whenever you
