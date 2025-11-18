@@ -1,14 +1,17 @@
-# Plocate Forensics Extensions
+# Flocate Forensics Extensions
 
 [Deutsch](README_de.md)
 
 ## Overview
 
-This tree extends [plocate](https://plocate.sesse.net/) with forensic
-instrumentation. In addition to the original fast locate(1) implementation,
+This tree extends [flocate](https://flocate.sesse.net/) with forensic
+instrumentation. Flocate is derived from the original
+[plocate](https://github.com/plocate/plocate) project; the core ideas and much
+of the implementation remain thanks to that upstream.
+In addition to the original fast locate(1) implementation,
 `updatedb` can now capture per-file metadata (mode, ownership, timestamps, size
 and optional hashes) and persist per-run history logs. The companion tool
-`plocate-showdiff` lets you replay that history, diff two databases, or compare a
+`flocate-showdiff` lets you replay that history, diff two databases, or compare a
 database against a live filesystem tree.
 
 ## Key Features
@@ -18,14 +21,14 @@ database against a live filesystem tree.
 - Retain the latest `N` runs in the database by setting
   `--history-depth=N`/`HISTORY_DEPTH`. Each run is tagged with a marker so it
   can be trimmed or replayed precisely.
-- `plocate-showdiff` modes:
-  - `plocate-showdiff --history DB`: print the recorded add/remove/modify events
+- `flocate-showdiff` modes:
+  - `flocate-showdiff --history DB`: print the recorded add/remove/modify events
     for the newest runs.
-  - `plocate-showdiff OLD_DB NEW_DB`: diff two snapshots.
-  - `plocate-showdiff --live /mnt/root DB`: compare on-disk files (under the
+  - `flocate-showdiff OLD_DB NEW_DB`: diff two snapshots.
+  - `flocate-showdiff --live /mnt/root DB`: compare on-disk files (under the
     specified root) against a database, recomputing metadata and hashes on the fly.
-- Everything ships with groff man pages (`plocate(1)`, `updatedb(8)`,
-  `plocate-build(8)`, `plocate-showdiff(1)`).
+- Everything ships with groff man pages (`flocate(1)`, `updatedb(8)`,
+  `flocate-build(8)`, `flocate-showdiff(1)`).
 
 ## Building and Installing
 
@@ -33,7 +36,7 @@ Dependencies: a C++17 compiler, Meson ≥ 0.61, Ninja, libzstd, and optional
 liburing.
 
 ```sh
-# configure once (pass MESON_ARGS="--prefix=/opt/plocate" if needed)
+# configure once (pass MESON_ARGS="--prefix=/opt/flocate" if needed)
 make config
 
 # build
@@ -59,17 +62,17 @@ adjust `MESON_ARGS`.
 - Configuration snippets in the database header ensure incompatible changes
   trigger an automatic rebuild.
 
-## plocate-showdiff Usage
+## flocate-showdiff Usage
 
 ```
 # Inspect the built-in history log
-plocate-showdiff --history /var/lib/plocate/plocate.db
+flocate-showdiff --history /var/lib/flocate/flocate.db
 
 # Compare two snapshots
-plocate-showdiff /tmp/old.db /tmp/new.db
+flocate-showdiff /tmp/old.db /tmp/new.db
 
 # Compare a database against a live tree (e.g., mounted backup)
-plocate-showdiff --live /mnt/backup /var/lib/plocate/plocate.db
+flocate-showdiff --live /mnt/backup /var/lib/flocate/flocate.db
 ```
 
 Outputs list the affected paths as well as old/new metadata (including hashes
@@ -80,7 +83,7 @@ when available).
 - `/etc/updatedb.conf` understands the new `METADATA_HASH` and `HISTORY_DEPTH`
   variables in addition to the classic pruning knobs.
 - Refer to the installed man pages for the canonical CLI reference:
-  `plocate(1)`, `updatedb(8)`, `plocate-build(8)`, and `plocate-showdiff(1)`.
+  `flocate(1)`, `updatedb(8)`, `flocate-build(8)`, and `flocate-showdiff(1)`.
 
 ## Contributing
 

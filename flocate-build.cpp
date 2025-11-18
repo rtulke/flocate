@@ -192,10 +192,10 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 void usage()
 {
 	printf(
-		"Usage: plocate-build MLOCATE_DB PLOCATE_DB\n"
+		"Usage: flocate-build MLOCATE_DB FLOCATE_DB\n"
 		"\n"
-		"Generate plocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
-		"Normally, the destination should be /var/lib/mlocate/plocate.db.\n"
+		"Generate flocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
+		"Normally, the destination should be /var/lib/mlocate/flocate.db.\n"
 		"\n"
 		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
 		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
@@ -206,7 +206,7 @@ void usage()
 
 void version()
 {
-	printf("plocate-build %s\n", PACKAGE_VERSION);
+	printf("flocate-build %s\n", PACKAGE_VERSION);
 	printf("Copyright 2020 Steinar H. Gunderson\n");
 	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
 	printf("This is free software: you are free to change and redistribute it.\n");
@@ -258,7 +258,7 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			if (!parse_bool(optarg, &check_visibility) != 0) {
-				fprintf(stderr, "plocate-build: invalid value `%s' for --%s\n",
+				fprintf(stderr, "flocate-build: invalid value `%s' for --%s\n",
 					 optarg, "require-visibility");
 				exit(EXIT_FAILURE);
 			}

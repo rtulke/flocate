@@ -1,7 +1,7 @@
 # Forensics Extension Tracker
 
 ## Current Objective
-Augment plocate with optional forensic metadata capture, historical change tracking, and a high-speed diff tool (`showdiff`) that compares snapshots or the live filesystem.
+Augment flocate with optional forensic metadata capture, historical change tracking, and a high-speed diff tool (`showdiff`) that compares snapshots or the live filesystem.
 
 ## Milestones
 1. **Metadata schema & compatibility** (in progress)  
@@ -23,8 +23,8 @@ Augment plocate with optional forensic metadata capture, historical change track
    - Status: Metadata stream supports hashes, per-run history logs are retained with configurable depth (`--history-depth`), and tooling can consume both; future work focuses on richer runtime UX.
 4. **Runtime & diff tooling** (in progress)  
    - Implement `showdiff` to compare two DBs or DB vs. live FS, surfacing added/removed/modified entries using metadata.  
-   - Add plocate CLI toggles to read/display metadata only on demand.
-   - Status: `plocate-showdiff` can now replay the history log (`--history`) or diff two databases by decoding all filenames/metadata; live-FS comparison still pending.
+   - Add flocate CLI toggles to read/display metadata only on demand.
+   - Status: `flocate-showdiff` can now replay the history log (`--history`) or diff two databases by decoding all filenames/metadata; live-FS comparison still pending.
 5. **Docs, tests, benchmarks** (pending)  
    - Document workflows (`updatedb --metadata --history-depth`, `showdiff old.db new.db`).  
    - Add automated tests validating metadata accuracy and diff output; benchmark to confirm negligible impact when metadata disabled.

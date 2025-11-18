@@ -1,22 +1,22 @@
-.TH locate 1 "Oct 2020" plocate
+.TH locate 1 "Oct 2020" flocate
 .SH NAME
-plocate \- find files by name, quickly
+flocate \- find files by name, quickly
 
 .SH SYNOPSIS
-.B plocate
+.B flocate
 .I "[OPTION]..."
 .I "PATTERN..."
 
 .SH DESCRIPTION
-.B plocate
+.B flocate
 finds all files on the system matching the given pattern (or all
 of the patterns if multiple are given). It does this by means of
 an index made by
 .BR updatedb (8)
 or (less commonly) converted from another index by
-.BR plocate\-build (8).
+.BR flocate\-build (8).
 
-plocate is largely argument-compatible with
+flocate is largely argument-compatible with
 .BR mlocate (1),
 but is significantly
 faster. In particular, it rarely needs to scan through its entire
@@ -27,7 +27,7 @@ and locales. Most I/O is done asynchronously, but the results are
 synchronized so that output comes in the same order every time.
 
 When multiple patterns are given,
-.B plocate
+.B flocate
 will search for files that match
 .I all
 of them. This is the main incompatibility with
@@ -50,7 +50,7 @@ behavior.
 
 Like
 .BR mlocate (1),
-.B plocate
+.B flocate
 shows all files visible to the calling user (by virtue of
 having read and execute permissions on all parent directories),
 and none that are not, by means of running with the setgid
@@ -58,13 +58,13 @@ bit set to access the index (which is built as root), but by
 testing visibility as the calling user.
 
 .SH EXIT STATUS
-.B plocate
+.B flocate
 exits with 0 to indicate that a match was found or that
 .B \-\-help
 or
 .B \-\-version
 were passed. Otherwise,
-.B plocate
+.B flocate
 exits with status code 1, indicating that an error occurred or that no matches were found.
 
 .SH OPTIONS
@@ -87,7 +87,7 @@ number at the end.
 
 .TP
 \fB\-d\fR, \fB\-\-database\fR \fIDBPATH\fR
-Find matches in the given database, instead of \fB/var/lib/plocate/plocate.db\fR.
+Find matches in the given database, instead of \fB/var/lib/flocate/flocate.db\fR.
 This argument can be given multiple times, to search multiple databases.
 It is also possible to give multiple databases in one argument, separated by 
 .BR : .
@@ -106,7 +106,7 @@ to change this).
 \fB\-i\fR, \fB\-\-ignore\-case\fR
 Do a case-insensitive match as given by the current locale
 (default is case-sensitive, byte-by-byte match). Note that
-.B plocate
+.B flocate
 does not support the full range of Unicode case folding rules;
 in particular, searching for \fIß\fR will not give you matches on \fIss\fR
 even in a German locale. Also note that this option will be
@@ -124,7 +124,7 @@ is given, the number printed out will be at most \fILIMIT\fR.
 .TP
 \fB\-N\fR, \fB\-\-literal\fR
 Print entry names without quoting. Normally,
-.B plocate
+.B flocate
 will escape special characters in filenames, so that they are safe for
 consumption by typical shells (similar to the GNU coreutils
 .I shell\-escape\-always
@@ -178,9 +178,9 @@ Colon-delimiting and character escaping follows the same rules
 as for \fB\-\-database\fR.
 
 .SH AUTHOR
-Steinar H. Gunderson <steinar+plocate@gunderson.no>
+Steinar H. Gunderson <steinar+flocate@gunderson.no>
 
 .SH SEE ALSO
-\fBplocate\-build\fP(8),
+\fBflocate\-build\fP(8),
 \fBmlocate\fP(1),
 \fBupdatedb\fP(8)

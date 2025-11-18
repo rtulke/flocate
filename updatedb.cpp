@@ -17,8 +17,8 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA.
 Author: Miloslav Trmac <mitr@redhat.com>
 
 
-plocate modifications: Copyright (C) 2020 Steinar H. Gunderson.
-plocate parts and modifications are licensed under the GPLv2 or, at your option,
+flocate modifications: Copyright (C) 2020 Steinar H. Gunderson.
+flocate parts and modifications are licensed under the GPLv2 or, at your option,
 any later version.
  */
 
@@ -69,10 +69,10 @@ static size_t conf_prunepaths_index; /* = 0; */
 void usage()
 {
 	printf(
-		"Usage: updatedb PLOCATE_DB\n"
+		"Usage: updatedb FLOCATE_DB\n"
 		"\n"
-		"Generate plocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
-		"Normally, the destination should be /var/lib/mlocate/plocate.db.\n"
+		"Generate flocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
+		"Normally, the destination should be /var/lib/mlocate/flocate.db.\n"
 		"\n"
 		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
 		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
@@ -481,7 +481,7 @@ ExistingDB::ExistingDB(int fd)
 		error = true;
 		return;
 	}
-	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
+	if (memcmp(hdr.magic, "\0flocate", 8) != 0) {
 		if (conf_verbose) {
 			fprintf(stderr, "Old database had header mismatch, ignoring.\n");
 		}
@@ -1273,7 +1273,7 @@ int main(int argc, char **argv)
 
 	// It's too late to use the dictionary for the data we already compressed,
 	// unless we wanted to either scan the entire file system again (acceptable
-	// for plocate-build where it's cheap, less so for us), or uncompressing
+	// for flocate-build where it's cheap, less so for us), or uncompressing
 	// and recompressing. Instead, we store it for next time, assuming that the
 	// data changes fairly little from time to time.
 	string next_dictionary = dict_builder.train(1024);

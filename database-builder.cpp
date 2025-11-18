@@ -659,7 +659,7 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	}
 
 	// Write the header.
-	memcpy(hdr.magic, "\0plocate", 8);
+	memcpy(hdr.magic, "\0flocate", 8);
 	hdr.version = -1;  // Mark as broken.
 	hdr.hashtable_size = 0;  // Not known yet.
 	hdr.extra_ht_slots = num_overflow_slots;

@@ -1,14 +1,17 @@
-# Plocate Forensik-Erweiterungen
+# Flocate Forensik-Erweiterungen
 
 [English](README.md)
 
 ## Überblick
 
-Dieses Repository ergänzt [plocate](https://plocate.sesse.net/) um forensische
-Funktionen. Neben der ursprünglichen, schnellen locate(1)-Implementierung kann
+Dieses Repository ergänzt [flocate](https://flocate.sesse.net/) um forensische
+Funktionen. Flocate basiert auf dem ursprünglichen
+[plocate-Projekt](https://github.com/plocate/plocate); viele Ideen und große
+Teile der Implementierung stammen von dort.
+Neben der ursprünglichen, schnellen locate(1)-Implementierung kann
 `updatedb` jetzt pro Datei Metadaten (Modus, Besitz, Zeitstempel, Größe sowie
 optionale Hashes) erfassen und pro Lauf eine Änderungshistorie speichern. Das
-Tool `plocate-showdiff` spielt diese Historie ab, vergleicht zwei Datenbanken
+Tool `flocate-showdiff` spielt diese Historie ab, vergleicht zwei Datenbanken
 oder prüft eine Datenbank gegen ein Live-Dateisystem.
 
 ## Wichtige Funktionen
@@ -19,14 +22,14 @@ oder prüft eine Datenbank gegen ein Live-Dateisystem.
 - Behalten Sie die letzten `N` Läufe in der Datenbank mit
   `--history-depth=N`/`HISTORY_DEPTH`. Jeder Lauf erhält einen Marker, damit er
   gezielt getrimmt oder ausgewertet werden kann.
-- Modi von `plocate-showdiff`:
-  - `plocate-showdiff --history DB`: gibt die aufgezeichneten Add/Remove/Modify-
+- Modi von `flocate-showdiff`:
+  - `flocate-showdiff --history DB`: gibt die aufgezeichneten Add/Remove/Modify-
     Ereignisse der neuesten Läufe aus.
-  - `plocate-showdiff ALT_DB NEU_DB`: vergleicht zwei Snapshots.
-  - `plocate-showdiff --live /mnt/root DB`: vergleicht Dateien unter dem
+  - `flocate-showdiff ALT_DB NEU_DB`: vergleicht zwei Snapshots.
+  - `flocate-showdiff --live /mnt/root DB`: vergleicht Dateien unter dem
     angegebenen Root mit einer Datenbank und berechnet Metadaten/Hashes erneut.
-- Für alle Werkzeuge stehen groff-Manpages bereit: `plocate(1)`, `updatedb(8)`,
-  `plocate-build(8)` und `plocate-showdiff(1)`.
+- Für alle Werkzeuge stehen groff-Manpages bereit: `flocate(1)`, `updatedb(8)`,
+  `flocate-build(8)` und `flocate-showdiff(1)`.
 
 ## Bauen und Installieren
 
@@ -34,7 +37,7 @@ Abhängigkeiten: C++17-Compiler, Meson ≥ 0.61, Ninja, libzstd sowie optional
 liburing.
 
 ```sh
-# einmal konfigurieren (optional MESON_ARGS="--prefix=/opt/plocate")
+# einmal konfigurieren (optional MESON_ARGS="--prefix=/opt/flocate")
 make config
 
 # bauen
@@ -61,17 +64,17 @@ Die Makefile-Ziele kapseln Meson, daher kann `make config` jederzeit für neue
 - Konfigurationsblöcke in der Datenbank sorgen dafür, dass inkompatible
   Änderungen automatisch einen Neuaufbau auslösen.
 
-## plocate-showdiff verwenden
+## flocate-showdiff verwenden
 
 ```
 # interne Historie inspizieren
-plocate-showdiff --history /var/lib/plocate/plocate.db
+flocate-showdiff --history /var/lib/flocate/flocate.db
 
 # zwei Snapshots vergleichen
-plocate-showdiff /tmp/alt.db /tmp/neu.db
+flocate-showdiff /tmp/alt.db /tmp/neu.db
 
 # Datenbank mit Live-Dateisystem vergleichen (z. B. eingehängtes Backup)
-plocate-showdiff --live /mnt/backup /var/lib/plocate/plocate.db
+flocate-showdiff --live /mnt/backup /var/lib/flocate/flocate.db
 ```
 
 Die Ausgabe zeigt die betroffenen Pfade sowie alte/neue Metadaten (Hashwerte
@@ -82,7 +85,7 @@ inklusive, sofern verfügbar).
 - `/etc/updatedb.conf` versteht neben den klassischen Pruning-Optionen jetzt
   auch `METADATA_HASH` und `HISTORY_DEPTH`.
 - Die installierten Manpages liefern die vollständige Referenz:
-  `plocate(1)`, `updatedb(8)`, `plocate-build(8)` und `plocate-showdiff(1)`.
+  `flocate(1)`, `updatedb(8)`, `flocate-build(8)` und `flocate-showdiff(1)`.
 
 ## Mitmachen
 

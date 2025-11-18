@@ -3,7 +3,7 @@
 
 // A reimplementation of parts of the TurboPFor codecs, using the same
 // storage format. These are not as fast as the reference implementation
-// (about 80% of the performance, averaged over a real plocate corpus),
+// (about 80% of the performance, averaged over a real flocate corpus),
 // and do not support the same breadth of codecs (in particular, only
 // delta-plus-1 is implemented, and only 32-bit docids are tested),
 // but aim to be more portable and (ideally) easier-to-understand.

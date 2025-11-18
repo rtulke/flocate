@@ -321,7 +321,7 @@ BlockType decide_block_type(const Docid *in, unsigned num, unsigned *bit_width, 
 		// 1 byte for signaling number of exceptions, plus the base values,
 		// and then we estimate up the varbytes and indexes using histogram
 		// indexes. This isn't exact, but it only helps ~0.1% on the total
-		// plocate.db size.
+		// flocate.db size.
 		unsigned cost = 1 + bytes_for_packed_bits(num, test_bit_width);
 		if (cost >= best_cost) {
 			break;

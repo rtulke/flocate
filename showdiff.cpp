@@ -257,7 +257,7 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	}
 
 	Header hdr;
-	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0plocate", 8) != 0) {
+	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0flocate", 8) != 0) {
 		fprintf(stderr, "%s: invalid or corrupt database\n", filename);
 		close(fd);
 		return false;
@@ -398,7 +398,7 @@ bool load_history_events(const char *filename, vector<HistoryEvent> *events)
 	}
 
 	Header hdr;
-	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0plocate", 8) != 0) {
+	if (!pread_fully(fd, &hdr, sizeof(hdr), 0) || memcmp(hdr.magic, "\0flocate", 8) != 0) {
 		fprintf(stderr, "%s: invalid or corrupt database\n", filename);
 		close(fd);
 		return false;
@@ -563,9 +563,9 @@ vector<HistoryEvent> diff_with_live(const Snapshot &snapshot, const string &root
 
 void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [--history] PLOCATE_DB\n", prog);
+	fprintf(stderr, "Usage: %s [--history] FLOCATE_DB\n", prog);
 	fprintf(stderr, "       %s OLD_DB NEW_DB\n", prog);
-	fprintf(stderr, "       %s --live ROOT PLOCATE_DB\n", prog);
+	fprintf(stderr, "       %s --live ROOT FLOCATE_DB\n", prog);
 }
 
 bool run_history_mode(const char *db_path)

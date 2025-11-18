@@ -1,11 +1,11 @@
-plocate is a locate based on posting lists. Compared to mlocate,
+flocate is a locate based on posting lists. Compared to mlocate,
 it is much faster, and its index is much smaller. updatedb speed
-is similar (or you can convert mlocate's index to plocate format
-using plocate-build). It supports most mlocate options;
-see --help or the man page (man -l plocate.1) for more information.
+is similar (or you can convert mlocate's index to flocate format
+using flocate-build). It supports most mlocate options;
+see --help or the man page (man -l flocate.1) for more information.
 
-The file format may still change (if so, plocate will notify you itself
-that you need to rerun plocate-build or updatedb). To build and install,
+The file format may still change (if so, flocate will notify you itself
+that you need to rerun flocate-build or updatedb). To build and install,
 you will need a C++17 compiler and a development package for Zstd
 (https://facebook.github.io/zstd/). liburing (https://github.com/axboe/liburing)
 and a kernel supporting io_uring (Linux 5.1 or newer) is optional,
@@ -15,9 +15,9 @@ do not have an SSD. Installation is run as:
   meson setup obj
   cd obj
   ninja
-  sudo addgroup --system plocate
+  sudo addgroup --system flocate
   sudo ninja install
-  sudo systemctl enable --now plocate-updatedb.timer
+  sudo systemctl enable --now flocate-updatedb.timer
 
 To build the database for the first time after install, you can do
 
@@ -36,11 +36,13 @@ the reference implementation, you can check it out and run as follows:
   ninja reconfigure
   ninja bench
 
-plocate (except updatedb), and the plocate-specific changes to updatedb,
-is Copyright 2020 Steinar H. Gunderson <steinar+plocate@gunderson.no>.
+flocate (except updatedb), and the flocate-specific changes to updatedb,
+is Copyright 2020 Steinar H. Gunderson <steinar+flocate@gunderson.no>.
 Licensed under the GNU General Public License, either version 2,
 or (at your option) any later version. See the included file COPYING.
 
 updatedb is Copyright (C) 2005, 2007 Red Hat, Inc. All rights reserved.
 Licensed under the GNU General Public License, version 2. See the
 included file COPYING.
+flocate is derived from the original plocate project; see https://github.com/plocate/plocate
+for history and upstream development.

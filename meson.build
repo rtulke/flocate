@@ -1,12 +1,12 @@
-project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.24-dev')
+project('flocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.24-dev')
 
 add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
 add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
 dbfile = join_paths(get_option('sharedstatedir'), get_option('dbpath'))
 add_project_arguments('-DDBFILE="' + dbfile + '"', language: 'cpp')
-add_project_arguments('-DPACKAGE_NAME="plocate"', language: 'cpp')
+add_project_arguments('-DPACKAGE_NAME="flocate"', language: 'cpp')
 add_project_arguments('-DPACKAGE_VERSION="' + meson.project_version() + '"', language: 'cpp')
-add_project_arguments('-DPACKAGE_BUGREPORT="steinar+plocate@gunderson.no"', language: 'cpp')
+add_project_arguments('-DPACKAGE_BUGREPORT="steinar+flocate@gunderson.no"', language: 'cpp')
 
 cxx = meson.get_compiler('cpp')
 uringdep = dependency('liburing', required: false)
@@ -30,11 +30,11 @@ if cxx.compiles(code, name: 'function multiversioning')
 	add_project_arguments('-DHAS_FUNCTION_MULTIVERSIONING', language: 'cpp')
 endif
 
-executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp', 'complete_pread.cpp'],
+executable('flocate', ['flocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp', 'complete_pread.cpp'],
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', get_option('locategroup')])
-executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
+executable('flocate-build', ['flocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
 	install: true,
 	install_dir: get_option('sbindir'))
@@ -43,7 +43,7 @@ executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp
 	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))
-executable('plocate-showdiff', ['showdiff.cpp', 'metadata_hash.cpp'],
+executable('flocate-showdiff', ['showdiff.cpp', 'metadata_hash.cpp'],
 	dependencies: [zstddep],
 	install: true,
 	install_dir: get_option('sbindir'))
@@ -55,8 +55,8 @@ conf_data.set('groupname', get_option('locategroup'))
 conf_data.set('dbfile', dbfile)
 conf_data.set('updatedb_conf', '/etc/updatedb.conf')
 conf_data.set('updatedb_progname', updatedb_progname)
-update_script = configure_file(input: 'update-plocate.sh',
-               output: 'update-plocate.sh',
+update_script = configure_file(input: 'update-flocate.sh',
+               output: 'update-flocate.sh',
                configuration: conf_data)
 
 fs = import('fs')
@@ -65,11 +65,11 @@ meson.add_install_script('mkdir.sh', fs.parent(dbfile))
 if get_option('install_cron')
 	install_data(update_script,
 		install_dir: '/etc/cron.daily',
-		rename: 'plocate')
+		rename: 'flocate')
 endif
-install_man('plocate.1')
-install_man('plocate-build.8')
-install_man('plocate-showdiff.1')
+install_man('flocate.1')
+install_man('flocate-build.8')
+install_man('flocate-showdiff.1')
 
 updatedb_man = configure_file(input: 'updatedb.8.in',
                output: updatedb_progname + '.8',
@@ -90,11 +90,11 @@ if get_option('install_systemd')
 		endif
 	endif
 	if unitdir != ''
-		updatedb_service = configure_file(input: 'plocate-updatedb.service.in',
-			output: 'plocate-updatedb.service',
+		updatedb_service = configure_file(input: 'flocate-updatedb.service.in',
+			output: 'flocate-updatedb.service',
 			configuration: conf_data)
 		install_data(updatedb_service, install_dir: unitdir)
-		install_data('plocate-updatedb.timer', install_dir: unitdir)
+		install_data('flocate-updatedb.timer', install_dir: unitdir)
 	endif
 endif
 

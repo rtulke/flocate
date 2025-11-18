@@ -22,9 +22,9 @@ bool use_debug = false;
 
 int main(void)
 {
-	int fd = open("plocate.db", O_RDONLY);
+	int fd = open("flocate.db", O_RDONLY);
 	if (fd == -1) {
-		perror("plocate.db");
+		perror("flocate.db");
 		exit(1);
 	}
 
@@ -138,7 +138,7 @@ int main(void)
 	// - Compressed speed is easy to compare to disk I/O, to see the relative importance
 	// - Uncompressed speed is easy to compare to intersection speeds and memory bandwidth
 	//   (also very roughly comparable to the benchmark numbers in the TurboPFor README)
-	// - ns/element gives an absolute measure for plocate (e.g. if we can decompress at
+	// - ns/element gives an absolute measure for flocate (e.g. if we can decompress at
 	//   1 ns/element, a 10k-element posting list goes by in 0.01 ms, which is way beyond
 	//   instantaneous in practice).
 	fprintf(stderr, "%.1f MB/sec (compressed), %.1f MB/sec (uncompressed), %.1f ns/element\n", posting_list_bytes / own_sec / 1048576.0,

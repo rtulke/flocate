@@ -15,8 +15,8 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 Author: Miloslav Trmac <mitr@redhat.com>
 
-plocate modifications: Copyright (C) 2020 Steinar H. Gunderson.
-plocate parts and modifications are licensed under the GPLv2 or, at your option,
+flocate modifications: Copyright (C) 2020 Steinar H. Gunderson.
+flocate parts and modifications are licensed under the GPLv2 or, at your option,
 any later version.
 */
 

@@ -1,26 +1,26 @@
-.\" A man page for plocate-showdiff -*- nroff -*-
+.\" A man page for flocate-showdiff -*- nroff -*-
 .\" Copyright 2025 Robert Tulke
-.TH plocate-showdiff 1 "Nov 2025" plocate
+.TH flocate-showdiff 1 "Nov 2025" flocate
 
 .SH NAME
-plocate-showdiff \- compare plocate databases or history logs
+flocate-showdiff \- compare flocate databases or history logs
 
 .SH SYNOPSIS
-.B plocate-showdiff
+.B flocate-showdiff
 .RI [ --history ]
-.I PLOCATE_DB
+.I FLOCATE_DB
 .br
-.B plocate-showdiff
+.B flocate-showdiff
 .I OLD_DB NEW_DB
 .br
-.B plocate-showdiff
-.RI --live " ROOT " PLOCATE_DB
+.B flocate-showdiff
+.RI --live " ROOT " FLOCATE_DB
 
 .SH DESCRIPTION
-.B plocate-showdiff
+.B flocate-showdiff
 inspects the metadata that
 .BR updatedb (8)
-stores inside a plocate database. It can replay the internal history log,
+stores inside a flocate database. It can replay the internal history log,
 diff two database snapshots, or compare a database against a live filesystem
 root (recomputing metadata and optional hashes).
 
@@ -28,14 +28,14 @@ root (recomputing metadata and optional hashes).
 .TP
 .B --history
 Print the recorded add/remove/modify events stored alongside
-.I PLOCATE_DB .
+.I FLOCATE_DB .
 The log is ordered chronologically; run markers are automatically skipped in
 the output.
 
 .TP
 .I OLD_DB NEW_DB
 When invoked with two database paths,
-.B plocate-showdiff
+.B flocate-showdiff
 compares their metadata and prints one line per change (ADDED/REMOVED/MODIFIED)
 including the old and/or new attributes.
 
@@ -60,9 +60,9 @@ or command-line usage errors).
 .SH FILES
 .TP
 .I @dbfile@
-Default plocate database (as consumed by the history mode).
+Default flocate database (as consumed by the history mode).
 
 .SH SEE ALSO
-.BR plocate (1),
+.BR flocate (1),
 .BR updatedb (8),
-.BR plocate-build (8)
+.BR flocate-build (8)

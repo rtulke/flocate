@@ -16,7 +16,7 @@
 .\" 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 .\"
 .\" Author: Miloslav Trmac <mitr@redhat.com>
-.TH updatedb.conf 5 "Oct 2020" plocate
+.TH updatedb.conf 5 "Oct 2020" flocate
 
 .SH NAME
 @updatedb_conf@ \- a configuration file for updatedb(8)

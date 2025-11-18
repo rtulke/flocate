@@ -98,8 +98,8 @@ Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 	}
 
 	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0, filename_for_errors);
-	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
-		fprintf(stderr, "%s: database is corrupt or not a plocate database; please rebuild it.\n", filename_for_errors);
+	if (memcmp(hdr.magic, "\0flocate", 8) != 0) {
+		fprintf(stderr, "%s: database is corrupt or not a flocate database; please rebuild it.\n", filename_for_errors);
 		exit(1);
 	}
 	if (hdr.version != 0 && hdr.version != 1 && hdr.version != 2) {
@@ -697,7 +697,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 //
 // The reason for this is that we're not robust against malicious input, so we need
 // to drop privileges after opening the file. (Otherwise, we could fall prey to an attack
-// where a user does locate -d badfile.db:/var/lib/plocate/plocate.db, badfile.db contains
+// where a user does locate -d badfile.db:/var/lib/flocate/flocate.db, badfile.db contains
 // a buffer overflow that takes over the process, and then uses the elevated privileges
 // to print out otherwise inaccessible paths.) We solve this by forking and treating the
 // child process as untrusted after it has dropped its privileges (which it does before
@@ -811,7 +811,7 @@ void parse_dbpaths(const char *ptr, vector<string> *output)
 void usage()
 {
 	printf(
-		"Usage: plocate [OPTION]... PATTERN...\n"
+		"Usage: flocate [OPTION]... PATTERN...\n"
 		"\n"
 		"  -b, --basename         search only the file name portion of path names\n"
 		"  -c, --count            print number of matches instead of the matches\n"
@@ -944,7 +944,7 @@ int main(int argc, char **argv)
 		// so drop setgid before we open the file; one would either need to run
 		// as root, or use a locally-built file. Doing the same thing for
 		// flush_cache is mostly paranoia, in an attempt to prevent random users
-		// from making plocate slow for everyone else.
+		// from making flocate slow for everyone else.
 		// --ignore-visibility is obvious; if we allowed to keep sgid with
 		// that flag on, it would subvert the entire security model.
 		if (setgid(getgid()) != 0) {
@@ -990,7 +990,7 @@ int main(int argc, char **argv)
 		needles.push_back(move(needle));
 	}
 	if (needles.empty()) {
-		fprintf(stderr, "plocate: no pattern to search for specified\n");
+		fprintf(stderr, "flocate: no pattern to search for specified\n");
 		exit(1);
 	}
 
