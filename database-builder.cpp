@@ -35,6 +35,50 @@ void append_raw(string &dst, const T &value)
 	dst.append(reinterpret_cast<const char *>(&value), sizeof(value));
 }
 
+void encode_metadata_record(string &dst, const FileMetadata &metadata)
+{
+	if (!metadata.enabled) {
+		dst.push_back('\0');
+		return;
+	}
+
+	dst.push_back('\1');
+	append_raw(dst, metadata.mode);
+	append_raw(dst, metadata.uid);
+	append_raw(dst, metadata.gid);
+	append_raw(dst, metadata.size);
+	append_raw(dst, metadata.mtime.sec);
+	append_raw(dst, metadata.mtime.nsec);
+	append_raw(dst, metadata.ctime.sec);
+	append_raw(dst, metadata.ctime.nsec);
+	append_raw(dst, metadata.atime.sec);
+	append_raw(dst, metadata.atime.nsec);
+
+	dst.push_back(static_cast<char>(metadata.hash.kind));
+	uint8_t hash_len = metadata.hash.length;
+	assert(hash_len <= metadata.hash.value.size());
+	dst.push_back(static_cast<char>(hash_len));
+	if (hash_len != 0) {
+		dst.append(reinterpret_cast<const char *>(metadata.hash.value.data()), hash_len);
+	}
+}
+
+string encode_history_stream(const vector<HistoryEvent> &events)
+{
+	string buf;
+	for (const HistoryEvent &event : events) {
+		buf.push_back(static_cast<char>(event.kind));
+		append_raw(buf, event.event_time.sec);
+		append_raw(buf, event.event_time.nsec);
+		uint32_t path_len = event.path.size();
+		append_raw(buf, path_len);
+		buf.append(event.path.data(), path_len);
+		encode_metadata_record(buf, event.old_metadata);
+		encode_metadata_record(buf, event.new_metadata);
+	}
+	return buf;
+}
+
 }  // namespace
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
@@ -218,7 +262,6 @@ public:
 private:
 	void compress_dir_times(size_t allowed_slop);
 	void compress_metadata(size_t allowed_slop);
-	void append_metadata(const FileMetadata &metadata);
 
 	std::unique_ptr<PostingListBuilder *[]> invindex;
 	FILE *outfp;
@@ -284,7 +327,7 @@ void EncodingCorpus::add_file(const FileRecord &record)
 	}
 
 	if (store_metadata) {
-		append_metadata(record.metadata);
+		encode_metadata_record(metadata_stream, record.metadata);
 		compress_metadata(/*allowed_slop=*/4096);
 	}
 }
@@ -318,34 +361,6 @@ void EncodingCorpus::compress_dir_times(size_t allowed_slop)
 			// Nothing happened (not enough data?), try again later.
 			return;
 		}
-	}
-}
-
-void EncodingCorpus::append_metadata(const FileMetadata &metadata)
-{
-	if (!metadata.enabled) {
-		metadata_stream.push_back('\0');
-		return;
-	}
-
-	metadata_stream.push_back('\1');
-	append_raw(metadata_stream, metadata.mode);
-	append_raw(metadata_stream, metadata.uid);
-	append_raw(metadata_stream, metadata.gid);
-	append_raw(metadata_stream, metadata.size);
-	append_raw(metadata_stream, metadata.mtime.sec);
-	append_raw(metadata_stream, metadata.mtime.nsec);
-	append_raw(metadata_stream, metadata.ctime.sec);
-	append_raw(metadata_stream, metadata.ctime.nsec);
-	append_raw(metadata_stream, metadata.atime.sec);
-	append_raw(metadata_stream, metadata.atime.nsec);
-
-	metadata_stream.push_back(static_cast<char>(metadata.hash.kind));
-	uint8_t hash_len = metadata.hash.length;
-	assert(hash_len <= metadata.hash.value.size());
-	metadata_stream.push_back(static_cast<char>(hash_len));
-	if (hash_len != 0) {
-		metadata_stream.append(reinterpret_cast<const char *>(metadata.hash.value.data()), hash_len);
 	}
 }
 
@@ -697,6 +712,11 @@ void DatabaseBuilder::set_conf_block(std::string conf_block)
 	this->conf_block = move(conf_block);
 }
 
+void DatabaseBuilder::set_history_events(vector<HistoryEvent> events)
+{
+	history_events = move(events);
+}
+
 void DatabaseBuilder::finish_corpus()
 {
 	corpus->finish();
@@ -792,15 +812,34 @@ void DatabaseBuilder::finish_corpus()
 		compressed_dir_times.clear();
 	}
 
-	string compressed_metadata = corpus->get_compressed_metadata();
-	size_t bytes_for_metadata = 0;
-	if (!compressed_metadata.empty()) {
-		hdr.metadata_offset_bytes = ftell(outfp);
-		hdr.metadata_length_bytes = compressed_metadata.size();
-		fwrite(compressed_metadata.data(), compressed_metadata.size(), 1, outfp);
-		bytes_for_metadata = compressed_metadata.size();
-		compressed_metadata.clear();
-		hdr.metadata_flags = METADATA_FLAG_POSIX_V1;
+string compressed_metadata = corpus->get_compressed_metadata();
+size_t bytes_for_metadata = 0;
+if (!compressed_metadata.empty()) {
+	hdr.metadata_offset_bytes = ftell(outfp);
+	hdr.metadata_length_bytes = compressed_metadata.size();
+	fwrite(compressed_metadata.data(), compressed_metadata.size(), 1, outfp);
+	bytes_for_metadata = compressed_metadata.size();
+	compressed_metadata.clear();
+	hdr.metadata_flags = METADATA_FLAG_POSIX_V1;
+}
+
+	size_t bytes_for_history = 0;
+	if (!history_events.empty()) {
+		string raw_history = encode_history_stream(history_events);
+		size_t bound = ZSTD_compressBound(raw_history.size());
+		string compressed;
+		compressed.resize(bound);
+		size_t written = ZSTD_compress(compressed.data(), bound, raw_history.data(), raw_history.size(), /*level=*/6);
+		if (ZSTD_isError(written)) {
+			fprintf(stderr, "ZSTD_compress(history) failed: %s\n", ZSTD_getErrorName(written));
+			exit(1);
+		}
+		compressed.resize(written);
+		hdr.history_offset_bytes = ftell(outfp);
+		hdr.history_length_bytes = compressed.size();
+		fwrite(compressed.data(), compressed.size(), 1, outfp);
+		bytes_for_history = compressed.size();
+		history_events.clear();
 	}
 
 	// Write the recommended dictionary for next update.
@@ -847,7 +886,7 @@ void DatabaseBuilder::finish_corpus()
 
 	fclose(outfp);
 
-	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames + bytes_for_compressed_dir_times + bytes_for_metadata);
+	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames + bytes_for_compressed_dir_times + bytes_for_metadata + bytes_for_history);
 
 	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Dictionary:     %'7.1f MB\n", hdr.zstd_dictionary_length_bytes / 1048576.0);
@@ -860,6 +899,9 @@ void DatabaseBuilder::finish_corpus()
 	}
 	if (bytes_for_metadata != 0) {
 		dprintf("Metadata:       %'7.1f MB\n", bytes_for_metadata / 1048576.0);
+	}
+	if (bytes_for_history != 0) {
+		dprintf("History log:    %'7.1f MB\n", bytes_for_history / 1048576.0);
 	}
 	dprintf("Total:          %'7.1f MB\n", total_bytes / 1048576.0);
 	dprintf("\n");

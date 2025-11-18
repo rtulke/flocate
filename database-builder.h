@@ -58,6 +58,7 @@ public:
 	DatabaseReceiver *start_corpus(bool store_dir_times, bool store_metadata);
 	void set_next_dictionary(std::string next_dictionary);
 	void set_conf_block(std::string conf_block);
+	void set_history_events(std::vector<HistoryEvent> events);
 	void finish_corpus();
 
 private:
@@ -70,6 +71,7 @@ private:
 	EncodingCorpus *corpus = nullptr;
 	ZSTD_CDict *cdict = nullptr;
 	std::string next_dictionary, conf_block;
+	std::vector<HistoryEvent> history_events;
 };
 
 #endif  // !defined(_DATABASE_BUILDER_H)

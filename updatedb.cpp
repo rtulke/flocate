@@ -55,6 +55,7 @@ any later version.
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -159,6 +160,9 @@ struct entry {
 	dir_time db_modified = unknown_dir_time;
 	dev_t dev;
 	FileMetadata metadata;
+	FileMetadata previous_metadata;
+	bool existed_before = false;
+	bool matched_in_new_scan = false;
 };
 
 bool filesystem_is_excluded(const string &path)
@@ -226,6 +230,27 @@ FileMetadata metadata_from_stat(const struct stat &buf)
 	metadata.ctime = dir_time{ buf.st_ctim.tv_sec, int32_t(buf.st_ctim.tv_nsec) };
 	metadata.atime = dir_time{ buf.st_atim.tv_sec, int32_t(buf.st_atim.tv_nsec) };
 	return metadata;
+}
+
+dir_time current_realtime()
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	return dir_time{ ts.tv_sec, int32_t(ts.tv_nsec) };
+}
+
+void record_history_event(vector<HistoryEvent> *history, HistoryEventKind kind, const string &path, const FileMetadata &old_meta, const FileMetadata &new_meta)
+{
+	if (history == nullptr) {
+		return;
+	}
+	HistoryEvent event;
+	event.kind = kind;
+	event.path = path;
+	event.event_time = current_realtime();
+	event.old_metadata = old_meta;
+	event.new_metadata = new_meta;
+	history->push_back(move(event));
 }
 
 // Represents the old database we are updating.
@@ -709,7 +734,7 @@ string ExistingDB::read_next_dictionary() const
 // “parent_dev” must be the device of the parent directory of “path”.
 //
 // Takes ownership of fd.
-int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder)
+int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder, vector<HistoryEvent> *history_events)
 {
 	if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, path)) {
 		if (conf_debug_pruning) {
@@ -768,6 +793,9 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		e.name = record.first.substr(path_plus_slash.size());
 		e.is_directory = (record.second.sec >= 0);
 		e.db_modified = record.second;
+		e.previous_metadata = existing_db->last_metadata();
+		e.existed_before = true;
+		e.matched_in_new_scan = false;
 		db_entries.push_back(e);
 	}
 
@@ -842,12 +870,14 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 	for (entry &e : entries) {
 		for (; db_it != db_entries.end(); ++db_it) {
 			if (e.name < db_it->name) {
-					break;
-				}
-				if (e.name == db_it->name) {
-					e.db_modified = db_it->db_modified;
-					break;
-				}
+				break;
+			}
+			if (e.name == db_it->name) {
+				e.db_modified = db_it->db_modified;
+				e.previous_metadata = db_it->previous_metadata;
+				e.existed_before = true;
+				db_it->matched_in_new_scan = true;
+				break;
 			}
 		}
 	}
@@ -872,6 +902,13 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 				}
 				e.metadata.hash = MetadataHash{};
 			}
+		}
+
+		const string full_path = path_plus_slash + e.name;
+		if (!e.existed_before) {
+			record_history_event(history_events, HistoryEventKind::Added, full_path, FileMetadata{}, e.metadata);
+		} else if (!metadata_equals(e.metadata, e.previous_metadata)) {
+			record_history_event(history_events, HistoryEventKind::Modified, full_path, e.previous_metadata, e.metadata);
 		}
 	}
 
@@ -947,6 +984,12 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		e.dt = get_dirtime_from_stat(buf);
 	}
 
+	for (const entry &old_entry : db_entries) {
+		if (!old_entry.matched_in_new_scan) {
+			record_history_event(history_events, HistoryEventKind::Removed, path_plus_slash + old_entry.name, old_entry.previous_metadata, FileMetadata{});
+		}
+	}
+
 	// Actually add all the entries we figured out dates for above.
 	for (const entry &e : entries) {
 		FileRecord record;
@@ -959,8 +1002,8 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 	// Now scan subdirectories.
 	for (const entry &e : entries) {
-		if (e.is_directory && e.fd != -1) {
-			int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, existing_db, corpus, dict_builder);
+			if (e.is_directory && e.fd != -1) {
+				int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, existing_db, corpus, dict_builder, history_events);
 			if (ret == -1) {
 				// TODO: The unscanned file descriptors will leak, but it doesn't really matter,
 				// as we're about to exit.
@@ -1034,7 +1077,8 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, &existing_db, corpus, &dict_builder);
+	vector<HistoryEvent> history_events;
+	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, &existing_db, corpus, &dict_builder, &history_events);
 
 	// It's too late to use the dictionary for the data we already compressed,
 	// unless we wanted to either scan the entire file system again (acceptable
@@ -1043,6 +1087,7 @@ int main(int argc, char **argv)
 	// data changes fairly little from time to time.
 	string next_dictionary = dict_builder.train(1024);
 	db.set_next_dictionary(next_dictionary);
+	db.set_history_events(move(history_events));
 	db.finish_corpus();
 
 	exit(EXIT_SUCCESS);

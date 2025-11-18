@@ -11,16 +11,14 @@
   - Failures (permission errors, short reads) clear the hash back to `None` and optionally log via `conf_verbose`.
 
 ## History Log Layout
-- **Purpose**: Track adds/removals/metadata changes per updatedb run for consumption by `showdiff`.
+- **Purpose**: Track adds/removals/metadata changes per updatedb run for `showdiff`.
 - **Storage**:
-  - Append-only log after metadata stream: entries `struct { uint32_t docid; uint8_t change; dir_time timestamp; uint64_t prev_meta_offset; uint64_t new_meta_offset; }`.
-  - Change kinds: 0=added, 1=deleted, 2=modified (metadata delta), 3=hash-mismatch.
-  - Log compressed with Zstd in 4 KiB chunks, similar to metadata.
-  - Header already reserves `history_offset/length`.
+  - After metadata stream, we append a Zstd-compressed sequence of events. Each event stores `{uint8_t kind, dir_time event_time, uint32_t path_len, path bytes, encoded old metadata, encoded new metadata}`; metadata uses the same layout as the main stream (enabled flag + POSIX fields + hash).
+  - Change kinds: 0 = added, 1 = removed, 2 = modified. Added events carry only the new metadata, removed events carry only the old metadata.
+  - Header fields `history_offset_bytes/history_length_bytes` point at the compressed blob.
 - **Retention**:
-  - CLI flag `--history-depth=<n>` controlling number of logs (rolling window). Depth=0 disables history, default 0.
-  - Each updatedb run writes a new log chunk tagged with run timestamp; optional compaction merges older entries.
-  - External `showdiff` reads baseline metadata + history logs to compute deltas between timestamps.
+  - Currently we keep a single run's event log. Future work can extend this to a rolling history through multiple DBs or user-configurable retention (`--history-depth` placeholder).
+  - External tools can replay logs chronologically to rebuild deltas without rescanning the filesystem.
 
 ## showdiff Consumption
 - Stream metadata sequentially using the new reader in `ExistingDB`.

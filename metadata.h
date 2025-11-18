@@ -1,6 +1,7 @@
 #ifndef METADATA_H
 #define METADATA_H 1
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -53,5 +54,41 @@ struct FileRecord {
 	dir_time dir_timestamp = unknown_dir_time;
 	FileMetadata metadata;
 };
+
+enum class HistoryEventKind : uint8_t {
+	Added = 0,
+	Removed = 1,
+	Modified = 2,
+};
+
+struct HistoryEvent {
+	HistoryEventKind kind = HistoryEventKind::Added;
+	std::string path;
+	dir_time event_time = unknown_dir_time;
+	FileMetadata old_metadata;
+	FileMetadata new_metadata;
+};
+
+inline bool metadata_equals(const FileMetadata &a, const FileMetadata &b)
+{
+	if (a.enabled != b.enabled)
+		return false;
+	if (!a.enabled)
+		return true;
+	return a.mode == b.mode &&
+	       a.uid == b.uid &&
+	       a.gid == b.gid &&
+	       a.size == b.size &&
+	       a.mtime.sec == b.mtime.sec &&
+	       a.mtime.nsec == b.mtime.nsec &&
+	       a.ctime.sec == b.ctime.sec &&
+	       a.ctime.nsec == b.ctime.nsec &&
+	       a.atime.sec == b.atime.sec &&
+	       a.atime.nsec == b.atime.nsec &&
+	       a.hash.kind == b.hash.kind &&
+	       a.hash.length == b.hash.length &&
+	       std::equal(a.hash.value.begin(), a.hash.value.begin() + a.hash.length,
+	                  b.hash.value.begin());
+}
 
 #endif  // METADATA_H
