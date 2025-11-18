@@ -237,11 +237,18 @@ public:
 	void unread(pair<string, dir_time> record)
 	{
 		unread_record = move(record);
+		unread_metadata_record = last_metadata_record;
+		unread_metadata_valid = true;
 	}
 	string read_next_dictionary() const;
 	bool get_error() const { return error; }
+	const FileMetadata &last_metadata() const { return last_metadata_record; }
 
 private:
+	bool ensure_metadata_bytes(size_t need);
+	bool refill_metadata_block();
+	void read_next_metadata_record();
+
 	const int fd;
 	Header hdr;
 
@@ -256,12 +263,22 @@ private:
 	const char *current_dir_time_ptr = nullptr, *current_dir_time_end = nullptr;
 
 	pair<string, dir_time> unread_record;
+	FileMetadata unread_metadata_record;
+	bool unread_metadata_valid = false;
+
+	bool metadata_available = false;
+	off_t compressed_metadata_pos = 0;
+	string compressed_metadata;
+	string current_metadata_block;
+	const char *current_metadata_ptr = nullptr, *current_metadata_end = nullptr;
+	FileMetadata last_metadata_record;
 
 	// Used in one-shot mode, repeatedly.
 	ZSTD_DCtx *ctx;
 
 	// Used in streaming mode.
 	ZSTD_DCtx *dir_time_ctx;
+	ZSTD_DCtx *metadata_ctx = nullptr;
 
 	ZSTD_DDict *ddict = nullptr;
 
@@ -342,6 +359,14 @@ ExistingDB::ExistingDB(int fd)
 	}
 	compressed_dir_time_pos = hdr.directory_data_offset_bytes;
 
+	if (hdr.metadata_length_bytes != 0 && (hdr.metadata_flags & METADATA_FLAG_POSIX_V1)) {
+		metadata_available = true;
+		compressed_metadata_pos = hdr.metadata_offset_bytes;
+		metadata_ctx = ZSTD_createDCtx();
+		current_metadata_ptr = current_metadata_block.data();
+		current_metadata_end = current_metadata_block.data();
+	}
+
 	ctx = ZSTD_createDCtx();
 	dir_time_ctx = ZSTD_createDCtx();
 }
@@ -353,11 +378,153 @@ ExistingDB::~ExistingDB()
 	}
 }
 
+bool ExistingDB::ensure_metadata_bytes(size_t need)
+{
+	if (!metadata_available) {
+		return false;
+	}
+	while (size_t(current_metadata_end - current_metadata_ptr) < need) {
+		if (!refill_metadata_block()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool ExistingDB::refill_metadata_block()
+{
+	if (!metadata_available) {
+		return false;
+	}
+
+	if (current_metadata_ptr != nullptr) {
+		const size_t consumed = current_metadata_ptr - current_metadata_block.data();
+		current_metadata_block.erase(current_metadata_block.begin(), current_metadata_block.begin() + consumed);
+	}
+
+	size_t existing_data = current_metadata_block.size();
+	current_metadata_block.resize(existing_data + 4096);
+
+	ZSTD_outBuffer outbuf;
+	outbuf.dst = current_metadata_block.data() + existing_data;
+	outbuf.size = 4096;
+	outbuf.pos = 0;
+
+	ZSTD_inBuffer inbuf;
+	inbuf.src = compressed_metadata.data();
+	inbuf.size = compressed_metadata.size();
+	inbuf.pos = 0;
+
+	int err = ZSTD_decompressStream(metadata_ctx, &outbuf, &inbuf);
+	if (err < 0) {
+		if (conf_verbose) {
+			fprintf(stderr, "ZSTD_decompressStream(metadata) failed\n");
+		}
+		metadata_available = false;
+		return false;
+	}
+
+	compressed_metadata.erase(compressed_metadata.begin(), compressed_metadata.begin() + inbuf.pos);
+	current_metadata_block.resize(existing_data + outbuf.pos);
+
+	if (outbuf.pos == 0 && inbuf.pos == 0) {
+		if (compressed_metadata_pos >= hdr.metadata_offset_bytes + hdr.metadata_length_bytes) {
+			metadata_available = false;
+			return false;
+		}
+		size_t bytes_to_read = min<size_t>(4096, hdr.metadata_offset_bytes + hdr.metadata_length_bytes - compressed_metadata_pos);
+		char buf[4096];
+		if (!try_complete_pread(fd, buf, bytes_to_read, compressed_metadata_pos)) {
+			if (conf_verbose) {
+				perror("pread(metadata)");
+			}
+			metadata_available = false;
+			return false;
+		}
+		compressed_metadata_pos += bytes_to_read;
+		compressed_metadata.insert(compressed_metadata.end(), buf, buf + bytes_to_read);
+		return refill_metadata_block();
+	}
+
+	current_metadata_ptr = current_metadata_block.data();
+	current_metadata_end = current_metadata_block.data() + current_metadata_block.size();
+	return current_metadata_ptr != current_metadata_end;
+}
+
+void ExistingDB::read_next_metadata_record()
+{
+	if (!metadata_available) {
+		last_metadata_record = {};
+		return;
+	}
+
+	if (!ensure_metadata_bytes(1)) {
+		last_metadata_record = {};
+		metadata_available = false;
+		return;
+	}
+
+	FileMetadata meta;
+	meta.enabled = (*reinterpret_cast<const unsigned char *>(current_metadata_ptr)) != 0;
+	++current_metadata_ptr;
+
+	if (!meta.enabled) {
+		last_metadata_record = meta;
+		return;
+	}
+
+	const size_t fixed_bytes = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
+		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
+		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
+		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
+	if (!ensure_metadata_bytes(fixed_bytes + 2)) {
+		last_metadata_record = {};
+		metadata_available = false;
+		return;
+	}
+
+	auto read_scalar = [this](auto *dst) {
+		memcpy(dst, current_metadata_ptr, sizeof(*dst));
+		current_metadata_ptr += sizeof(*dst);
+	};
+
+	read_scalar(&meta.mode);
+	read_scalar(&meta.uid);
+	read_scalar(&meta.gid);
+	read_scalar(&meta.size);
+	read_scalar(&meta.mtime.sec);
+	read_scalar(&meta.mtime.nsec);
+	read_scalar(&meta.ctime.sec);
+	read_scalar(&meta.ctime.nsec);
+	read_scalar(&meta.atime.sec);
+	read_scalar(&meta.atime.nsec);
+
+	meta.hash.kind = static_cast<MetadataHashKind>(static_cast<unsigned char>(*current_metadata_ptr++));
+	uint8_t hash_len = static_cast<uint8_t>(*current_metadata_ptr++);
+	if (!ensure_metadata_bytes(hash_len)) {
+		last_metadata_record = {};
+		metadata_available = false;
+		return;
+	}
+	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
+	if (meta.hash.length != 0) {
+		memcpy(meta.hash.value.data(), current_metadata_ptr, meta.hash.length);
+	}
+	current_metadata_ptr += hash_len;
+	last_metadata_record = meta;
+}
+
 pair<string, dir_time> ExistingDB::read_next()
 {
 	if (!unread_record.first.empty()) {
 		auto ret = move(unread_record);
 		unread_record.first.clear();
+		if (unread_metadata_valid) {
+			last_metadata_record = unread_metadata_record;
+			unread_metadata_valid = false;
+		} else {
+			last_metadata_record = {};
+		}
 		return ret;
 	}
 
@@ -499,6 +666,9 @@ pair<string, dir_time> ExistingDB::read_next()
 
 	if (*current_dir_time_ptr == 0) {
 		++current_dir_time_ptr;
+		if (!filename.empty()) {
+			read_next_metadata_record();
+		}
 		return { move(filename), not_a_dir };
 	} else {
 		++current_dir_time_ptr;
@@ -507,6 +677,9 @@ pair<string, dir_time> ExistingDB::read_next()
 		current_dir_time_ptr += sizeof(dt.sec);
 		memcpy(&dt.nsec, current_dir_time_ptr, sizeof(dt.nsec));
 		current_dir_time_ptr += sizeof(dt.nsec);
+		if (!filename.empty()) {
+			read_next_metadata_record();
+		}
 		return { move(filename), dt };
 	}
 }
