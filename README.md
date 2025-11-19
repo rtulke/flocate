@@ -35,13 +35,21 @@ database against a live filesystem tree.
 Dependencies: a C++17 compiler, Meson ≥ 0.61, Ninja, libzstd, and optional
 liburing.
 
-For Debian GNU/Linux based Systems
+Prepare Dependecies for Debian GNU/Linux based Systems (ubuntu, kali, raspberryOS, mint,...)
 
 ```sh
 # install meson and ninja
-sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev 
+sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev git
 ```
 
+Cloning Repository
+```sh
+mkdir ~/dev/
+cd ~/dev/
+git clone https://github.com/rtulke/flocate.git
+```
+
+Compile and Build flocate (all Linux Distrisbutions)
 ```sh
 # configure once (pass MESON_ARGS="--prefix=/opt/flocate" if needed)
 make config
@@ -49,14 +57,13 @@ make config
 # build
 make
 
-# run the test suite
-make test
-
-# install / uninstall
+# install systemwide
 sudo groupadd flocate
 sudo ninja -C build install
-# sudo make install
-# sudo make uninstall
+sudo make install
+
+# uninstall 
+sudo make uninstall
 ```
 
 All targets wrap Meson, so you can reconfigure with `make config` whenever you
@@ -157,5 +164,69 @@ when available).
 
 - `/etc/updatedb.conf` understands the new `METADATA_HASH` and `HISTORY_DEPTH`
   variables in addition to the classic pruning knobs.
+
+## Troubleshooting
+
+### System-wide installation (updatedb conflicts with locate, mlocate or plocate)
+
+```sh
+sudo dpkg -l |grep locate
+
+ii  locate                         4.9.0-4                                          amd64        maintain and query an index of a directory tree
+ii  mlocate                        1.1.18-1                                         all          transitional dummy package
+ii  plocate                        1.1.18-1                                         amd64        much faster locate
+```
+or
+
+```sh
+ls -lat /usr/bin/locate
+root 24 28. Sep 2019  /usr/bin/locate -> /etc/alternatives/locate
+
+ls -lat /etc/alternatives/locate
+lrwxrwxrwx 1 root root 16 22. Nov 2023  /etc/alternatives/locate -> /usr/bin/plocate
+
+ls -lat /usr/bin/plocate
+-rwxr-sr-x 1 root plocate 314760 28. Jan 2023  /usr/bin/plocate
+```
+
+and
+
+```sh
+ls -lat /usr/bin/updatedb
+lrwxrwxrwx 1 root root 26 28. Sep 2019  /usr/bin/updatedb -> /etc/alternatives/updatedb
+
+ls -lat /etc/alternatives/updatedb
+lrwxrwxrwx 1 root root 26 22. Nov 2023  /etc/alternatives/updatedb -> /usr/sbin/updatedb.plocate
+
+ls -lat /usr/sbin/updatedb.plocate
+-rwxr-xr-x 1 root root 114096 28. Jan 2023  /usr/sbin/updatedb.plocate
+```
+
+Means this is a symlink 
+- for locate from `/usr/bin/locate` to `/etc/alternatives/locate` to `/usr/bin/plocate`
+- for updatedb from `/usr/bin/updatedb` to `/etc/alternatives/updatedb` to `/usr/sbin/updatedb.plocate`
+
+Ensure that no other search tools are installed, as this may cause problems with updatedb, since our flocate is installed in `/usr/local/bin` and updatedb comes in `/usr/local/sbin`.
+
+At your own risk you can try creating a symlink as follows:
+
+for updatedb
+
+```sh
+ln -fs /usr/local/sbin/updatedb /usr/bin/updatedb
+```
+
+for flocate 
+
+```sh
+ln -fs /usr/local/bin/floacte /usr/bin/locate
+```
+
+Otherwise, if plocate, mlocate, or locate are not needed, remove the installed locate tool. 
+
+```sh
+apt remove locate      # or plocate, mlocate
+```
+
 - Refer to the installed man pages for the canonical CLI reference:
   `flocate(1)`, `updatedb(8)`, `flocate-build(8)`, and `flocate-showdiff(1)`.
