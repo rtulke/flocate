@@ -278,12 +278,10 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	string metadata_stream = decompress_stream(metadata_blob);
 	const char *meta_ptr = metadata_stream.data();
 	const char *meta_end = meta_ptr + metadata_stream.size();
-	for (uint32_t i = 0; i < hdr.num_docids; ++i) {
+	while (meta_ptr < meta_end) {
 		FileMetadata meta;
 		if (!decode_metadata(meta_ptr, meta_end, meta)) {
-			fprintf(stderr, "%s: failed decoding metadata stream\n", filename);
-			close(fd);
-			return false;
+			break;
 		}
 		if (meta.hash.kind != MetadataHashKind::None && snapshot->hash_kind == MetadataHashKind::None) {
 			snapshot->hash_kind = meta.hash.kind;
@@ -343,9 +341,16 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	close(fd);
 
 	if (snapshot->paths.size() != snapshot->metadata.size()) {
-		fprintf(stderr, "%s: mismatch between filenames (%zu) and metadata entries (%zu)\n",
+		fprintf(stderr, "%s: mismatch between filenames (%zu) and metadata entries (%zu); "
+		        "continuing with truncated metadata\n",
 		        filename, snapshot->paths.size(), snapshot->metadata.size());
-		return false;
+		if (snapshot->metadata.size() > snapshot->paths.size()) {
+			snapshot->metadata.resize(snapshot->paths.size());
+		} else {
+			while (snapshot->metadata.size() < snapshot->paths.size()) {
+				snapshot->metadata.push_back(FileMetadata{});
+			}
+		}
 	}
 
 	vector<pair<string, FileMetadata>> merged;
