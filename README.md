@@ -46,6 +46,9 @@ git clone https://github.com/rtulke/flocate.git
 
 Compile and Build flocate (all Linux Distrisbutions)
 ```sh
+jump into the cloned local repository
+cd flocate
+
 # configure once (pass MESON_ARGS="--prefix=/opt/flocate" if needed)
 make config
 
