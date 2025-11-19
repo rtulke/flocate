@@ -37,7 +37,8 @@ Prepare Dependecies for Debian GNU/Linux based Systems (ubuntu, kali, raspberryO
 sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev git
 ```
 
-Ensure that no other search tools such as locate, mlocate, or plocate are installed. If they are, you should uninstall them.
+Ensure that no other search tools such as locate, mlocate, or plocate are installed. If they are, you should uninstall them. See also the troubleshooting section.
+
 ```sh
 sudo dpkg -l *locate
 ...
