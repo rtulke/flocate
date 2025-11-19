@@ -91,8 +91,8 @@ when available).
 
 ### `flocate`
 
-|Option short  |Option long                    |Description |
-|---           |---                            |--- |
+| Option short | Option long                   | Description |
+| :---         | :---                          | :--- |
 | `-A`         | `--all`                       | Ignored for mlocate compatibility. |
 | `-b`         | `--basename`                  | Match against the filename component only. |
 | `-c`         | `--count`                     | Suppress individual paths and print the total at the end. |
