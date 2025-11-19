@@ -92,7 +92,7 @@ when available).
 ### `flocate`
 
 | Option short | Option long                   | Description |
-| :---         | :---                          | :--- |
+| :---         | :---                          | :---        |
 | `-A`         | `--all`                       | Ignored for mlocate compatibility. |
 | `-b`         | `--basename`                  | Match against the filename component only. |
 | `-c`         | `--count`                     | Suppress individual paths and print the total at the end. |
@@ -111,7 +111,7 @@ when available).
 ### `updatedb`
 
 | Option short | Option long                   | Description |
-| ---          | ---                           | ---         |
+| :---         | :---                          | :---        |
 | `-f`         | `--add-prunefs FS`            | Append whitespace-separated filesystems in `FS` to `PRUNEFS`. |
 | `-n`         | `--add-prunenames NAMES`      | Append whitespace-separated directory names to `PRUNENAMES`. |
 | `-e`         | `--add-prunepaths PATHS`      | Append whitespace-separated paths to `PRUNEPATHS`. |
@@ -133,7 +133,7 @@ when available).
 ### `flocate-build`
 
 | Option short | Option long                   | Description |
-| ---          | ---                           | ---         |
+| :---         | :---                          | :---        |
 | `-b`         | `--block-size SIZE`           | Compress `SIZE` filenames per posting-list block (default 32). |
 | `-p`         | `--plaintext`                 | Treat the input as newline-delimited plain text instead of an mlocate DB. |
 | `-l`         | `--require-visibility FLAG`   | Set the “require visibility” flag in the generated database. |
@@ -143,7 +143,7 @@ when available).
 ### `flocate-showdiff`
 
 | Option short | Option long                   | Description |
-| ---          | ---                           | ---         |
+| :---         | :---                          | :---        |
 |              | `--history DB`                | Replay the per-run history embedded in `DB`. |
 |              | `OLD_DB NEW_DB`               | Positional arguments that trigger snapshot diff mode. |
 |              | `--live ROOT DB`              | Compare `DB` against a live filesystem rooted at `ROOT`. |
