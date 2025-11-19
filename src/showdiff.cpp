@@ -711,6 +711,15 @@ void usage(const char *prog)
 	fprintf(stderr, "       --modified-only  Show only MODIFIED events\n");
 }
 
+void version()
+{
+	printf("flocate-showdiff 1.1.24-dev\n");
+	printf("Copyright (C) 2025 Robert Tulke\n");
+	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
+	printf("This is free software: you are free to change and redistribute it.\n");
+	printf("There is NO WARRANTY, to the extent permitted by law.\n");
+}
+
 bool run_history_mode(const char *db_path, const EventFilter &filter)
 {
 	vector<HistoryEvent> events;
@@ -789,6 +798,9 @@ int main(int argc, char **argv)
 			live_root = argv[++i];
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(argv[0]);
+			return EXIT_SUCCESS;
+		} else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
+			version();
 			return EXIT_SUCCESS;
 		} else if (strcmp(argv[i], "--added-only") == 0) {
 			filter.enable(HistoryEventKind::Added);
