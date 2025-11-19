@@ -4,15 +4,9 @@
 
 ## Overview
 
-This tree extends [flocate](https://flocate.sesse.net/) with forensic
-instrumentation. Flocate is derived from the original
-[plocate](https://github.com/plocate/plocate) project; the core ideas and much
-of the implementation remain thanks to that upstream.
-In addition to the original fast locate(1) implementation,
-`updatedb` can now capture per-file metadata (mode, ownership, timestamps, size
-and optional hashes) and persist per-run history logs. The companion tool
-`flocate-showdiff` lets you replay that history, diff two databases, or compare a
-database against a live filesystem tree.
+This repository extends [plocate](https://plocate.sesse.net/) with forensic tools. `flocate` originated from the original [plocate](https://plocate.sesse.net/) project; the core ideas and most of the implementation have been preserved thanks to this upstream project. In addition to the original fast plocate(1) implementation, updatedb can now collect metadata per file (mode, ownership, timestamp, size, and optional hashes) and store history logs per run. 
+
+With the companion tool flocate-showdiff, you can play back this history, compare two databases, or compare a database with a live file system tree.
 
 ## Key Features
 
