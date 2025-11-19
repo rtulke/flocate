@@ -103,7 +103,7 @@ when available).
 | `-N`         | `--literal`                   | Output raw paths without shell-style escaping. |
 | `-0`         | `--null`                      | Separate matches with NUL instead of newlines. |
 | `-r`         | `--regexp`                    | Treat patterns as POSIX basic regular expressions (forces linear scan). |
-| -            | `--regex`                     | Treat patterns as POSIX extended regular expressions. |
+|              | `--regex`                     | Treat patterns as POSIX extended regular expressions. |
 | `-w`         | `--wholename`                 | Match against the full path (default unless `-b` was given earlier). |
 |              | `--help`                      | Show usage information. |
 | `-V`         | `--version`                   | Print version/license information. |
@@ -115,17 +115,17 @@ when available).
 | `-f`         | `--add-prunefs FS`            | Append whitespace-separated filesystems in `FS` to `PRUNEFS`. |
 | `-n`         | `--add-prunenames NAMES`      | Append whitespace-separated directory names to `PRUNENAMES`. |
 | `-e`         | `--add-prunepaths PATHS`      | Append whitespace-separated paths to `PRUNEPATHS`. |
-| -            | `--add-single-prunepath PATH` | Append a single path (even with spaces) to `PRUNEPATHS`. |
+|              | `--add-single-prunepath PATH` | Append a single path (even with spaces) to `PRUNEPATHS`. |
 | `-U`         | `--database-root PATH`        | Restrict scanning to `PATH`. |
-| -            | `--debug-pruning`             | Emit verbose pruning diagnostics on stderr. |
+|              | `--debug-pruning`             | Emit verbose pruning diagnostics on stderr. |
 | `-h`         | `--help`                      | Display usage information. |
 | `-o`         | `--output FILE`               | Write the database to `FILE` instead of the default. |
-| -            | `--prune-bind-mounts FLAG`    | Override `PRUNE_BIND_MOUNTS` (`yes`/`no`). |
-| -            | `--prunefs FS`                | Override `PRUNEFS` entirely. |
-| -            | `--prunenames NAMES`          | Override `PRUNENAMES` entirely. |
-| -            | `--prunepaths PATHS`          | Override `PRUNEPATHS` entirely. |
-| -            | `--metadata-hash ALGO`        | Hash regular files with `none`, `xxh64`, or `sha256`. |
-| -            | `--history-depth N`           | Keep metadata/history for the newest `N` runs (0 disables history). |
+|              | `--prune-bind-mounts FLAG`    | Override `PRUNE_BIND_MOUNTS` (`yes`/`no`). |
+|              | `--prunefs FS`                | Override `PRUNEFS` entirely. |
+|              | `--prunenames NAMES`          | Override `PRUNENAMES` entirely. |
+|              | `--prunepaths PATHS`          | Override `PRUNEPATHS` entirely. |
+|              | `--metadata-hash ALGO`        | Hash regular files with `none`, `xxh64`, or `sha256`. |
+|              | `--history-depth N`           | Keep metadata/history for the newest `N` runs (0 disables history). |
 | `-l`         | `--require-visibility FLAG`   | Toggle permission filtering in the generated database. |
 | `-v`         | `--verbose`                   | Print each path as it is discovered. |
 | `-V`         | `--version`                   | Print version/license information. |
