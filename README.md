@@ -57,8 +57,7 @@ make
 
 # install systemwide
 sudo groupadd flocate
-sudo ninja -C build install
-sudo make install
+sudo make install   # or sudo ninja -C build install
 
 # uninstall 
 sudo make uninstall
