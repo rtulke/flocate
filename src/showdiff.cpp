@@ -30,6 +30,49 @@ struct Snapshot {
 	MetadataHashKind hash_kind = MetadataHashKind::None;
 };
 
+struct EventFilter {
+	bool show_added = true;
+	bool show_removed = true;
+	bool show_modified = true;
+	bool filter_specified = false;
+
+	void enable(HistoryEventKind kind)
+	{
+		if (!filter_specified) {
+			show_added = show_removed = show_modified = false;
+			filter_specified = true;
+		}
+		switch (kind) {
+		case HistoryEventKind::Added:
+			show_added = true;
+			break;
+		case HistoryEventKind::Removed:
+			show_removed = true;
+			break;
+		case HistoryEventKind::Modified:
+			show_modified = true;
+			break;
+		case HistoryEventKind::RunMarker:
+			break;
+		}
+	}
+
+	bool accepts(HistoryEventKind kind) const
+	{
+		switch (kind) {
+		case HistoryEventKind::Added:
+			return show_added;
+		case HistoryEventKind::Removed:
+			return show_removed;
+		case HistoryEventKind::Modified:
+			return show_modified;
+		case HistoryEventKind::RunMarker:
+			return true;
+		}
+		return true;
+	}
+};
+
 FileMetadata metadata_from_stat(const struct stat &sb);
 bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out);
 string normalize_root(string root);
@@ -662,9 +705,13 @@ void usage(const char *prog)
 	fprintf(stderr, "Usage: %s [--history] FLOCATE_DB\n", prog);
 	fprintf(stderr, "       %s OLD_DB NEW_DB\n", prog);
 	fprintf(stderr, "       %s --live ROOT FLOCATE_DB\n", prog);
+	fprintf(stderr, "Filter options:\n");
+	fprintf(stderr, "       --added-only     Show only ADDED events\n");
+	fprintf(stderr, "       --removed-only   Show only REMOVED events\n");
+	fprintf(stderr, "       --modified-only  Show only MODIFIED events\n");
 }
 
-bool run_history_mode(const char *db_path)
+bool run_history_mode(const char *db_path, const EventFilter &filter)
 {
 	vector<HistoryEvent> events;
 	if (!load_history_events(db_path, &events)) {
@@ -675,12 +722,15 @@ bool run_history_mode(const char *db_path)
 		return true;
 	}
 	for (const HistoryEvent &event : events) {
+		if (!filter.accepts(event.kind)) {
+			continue;
+		}
 		print_event(event);
 	}
 	return true;
 }
 
-bool run_diff_mode(const char *old_db, const char *new_db)
+bool run_diff_mode(const char *old_db, const char *new_db, const EventFilter &filter)
 {
 	Snapshot old_snap, new_snap;
 	if (!load_snapshot(old_db, &old_snap) || !load_snapshot(new_db, &new_snap)) {
@@ -692,12 +742,15 @@ bool run_diff_mode(const char *old_db, const char *new_db)
 		return true;
 	}
 	for (const HistoryEvent &event : events) {
+		if (!filter.accepts(event.kind)) {
+			continue;
+		}
 		print_event(event);
 	}
 	return true;
 }
 
-bool run_live_mode(const char *db_path, const char *root)
+bool run_live_mode(const char *db_path, const char *root, const EventFilter &filter)
 {
 	Snapshot snap;
 	if (!load_snapshot(db_path, &snap)) {
@@ -709,6 +762,9 @@ bool run_live_mode(const char *db_path, const char *root)
 		return true;
 	}
 	for (const HistoryEvent &event : events) {
+		if (!filter.accepts(event.kind)) {
+			continue;
+		}
 		print_event(event);
 	}
 	return true;
@@ -720,6 +776,7 @@ int main(int argc, char **argv)
 {
 	bool history_mode = false;
 	const char *live_root = nullptr;
+	EventFilter filter;
 	vector<const char *> dbs;
 	for (int i = 1; i < argc; ++i) {
 		if (strcmp(argv[i], "--history") == 0) {
@@ -733,6 +790,12 @@ int main(int argc, char **argv)
 		} else if (strcmp(argv[i], "--help") == 0) {
 			usage(argv[0]);
 			return EXIT_SUCCESS;
+		} else if (strcmp(argv[i], "--added-only") == 0) {
+			filter.enable(HistoryEventKind::Added);
+		} else if (strcmp(argv[i], "--removed-only") == 0) {
+			filter.enable(HistoryEventKind::Removed);
+		} else if (strcmp(argv[i], "--modified-only") == 0) {
+			filter.enable(HistoryEventKind::Modified);
 		} else {
 			dbs.push_back(argv[i]);
 		}
@@ -753,7 +816,7 @@ int main(int argc, char **argv)
 			usage(argv[0]);
 			return EXIT_FAILURE;
 		}
-		return run_live_mode(dbs[0], live_root) ? EXIT_SUCCESS : EXIT_FAILURE;
+		return run_live_mode(dbs[0], live_root, filter) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	if (history_mode || dbs.size() == 1) {
@@ -761,11 +824,11 @@ int main(int argc, char **argv)
 			usage(argv[0]);
 			return EXIT_FAILURE;
 		}
-		return run_history_mode(dbs[0]) ? EXIT_SUCCESS : EXIT_FAILURE;
+		return run_history_mode(dbs[0], filter) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	if (dbs.size() == 2) {
-		return run_diff_mode(dbs[0], dbs[1]) ? EXIT_SUCCESS : EXIT_FAILURE;
+		return run_diff_mode(dbs[0], dbs[1], filter) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	usage(argv[0]);
