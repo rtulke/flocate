@@ -159,9 +159,3 @@ when available).
   variables in addition to the classic pruning knobs.
 - Refer to the installed man pages for the canonical CLI reference:
   `flocate(1)`, `updatedb(8)`, `flocate-build(8)`, and `flocate-showdiff(1)`.
-
-## Contributing
-
-See `AGENTS.md` for repository guidelines and `FORENSICS_PROGRESS.md` /
-`FORENSICS_HISTORY.md` for the long-term roadmap. Patches and issue reports are
-very welcome!
