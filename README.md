@@ -164,7 +164,7 @@ when available).
 
 ## Troubleshooting
 
-### System-wide installation (updatedb conflicts with locate, mlocate or plocate)
+### System-wide installation (flocate's updatedb conflicts with locate, mlocate or plocate)
 
 ```sh
 sudo dpkg -l |grep locate
