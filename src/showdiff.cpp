@@ -278,10 +278,12 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	string metadata_stream = decompress_stream(metadata_blob);
 	const char *meta_ptr = metadata_stream.data();
 	const char *meta_end = meta_ptr + metadata_stream.size();
-	while (meta_ptr < meta_end) {
+	for (uint32_t i = 0; i < hdr.num_docids; ++i) {
 		FileMetadata meta;
 		if (!decode_metadata(meta_ptr, meta_end, meta)) {
-			break;
+			fprintf(stderr, "%s: failed decoding metadata stream\n", filename);
+			close(fd);
+			return false;
 		}
 		if (meta.hash.kind != MetadataHashKind::None && snapshot->hash_kind == MetadataHashKind::None) {
 			snapshot->hash_kind = meta.hash.kind;
