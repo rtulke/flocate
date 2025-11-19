@@ -1,6 +1,6 @@
 # Flocate - [F]orensic plocate
 
-[Deutsch](README_de.md)
+[German Version](README_de.md)
 
 ## Overview
 
