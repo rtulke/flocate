@@ -19,6 +19,12 @@ from the
 package. Most users would rather want to use flocate's own
 .BR updatedb (8),
 which is more direct.
+.PP
+Flocate is a downstream continuation of the plocate project. Since
+November 2025 Robert Tulke <rt@debian.sh> has maintained flocate and its
+auxiliary tooling, including
+.BR flocate-build (8),
+to support the forensic extensions that differentiate it from plocate.
 If
 .I FLOCATE_DB
 already exists, it will be overwritten (non-atomically). The file is
@@ -64,8 +70,10 @@ Print out usage information, then exit successfully.
 .B \-\-version
 Print out version information, then exit successfully.
 
-.SH AUTHOR
+.SH AUTHORS
 Steinar H. Gunderson <steinar+flocate@gunderson.no>
+.br
+Robert Tulke <rt@debian.sh> (flocate maintainer since November 2025)
 
 .SH SEE ALSO
 \fBflocate\fP(1),

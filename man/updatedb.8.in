@@ -37,6 +37,11 @@ to avoid rereading directories that have not changed.
 is usually run daily from a
 .BR systemd.timer (8)
 to update the default database.
+.PP
+Flocate (and this \fBupdatedb\fR implementation) descends from the plocate
+code base. Robert Tulke <rt@debian.sh> has maintained the flocate fork since
+November 2025, adding the forensic and integrity extensions described in these
+pages.
 
 .SH EXIT STATUS
 .B updatedb
@@ -208,10 +213,12 @@ Databases built with
 allow users to find names of files and directories of other users,
 which they would not otherwise be able to do.
 
-.SH AUTHOR
+.SH AUTHORS
 Miloslav Trmac <mitr@redhat.com>
 .P
 Steinar H. Gunderson <steinar+flocate@gunderson.no>
+.br
+Robert Tulke <rt@debian.sh> (flocate maintainer since November 2025)
 
 .SH SEE ALSO
 .BR locate (1),

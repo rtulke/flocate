@@ -25,6 +25,10 @@ or you want to search for a regular expression. It does not try to
 maintain compatibility with BSD locate, or non-UTF-8 filenames
 and locales. Most I/O is done asynchronously, but the results are
 synchronized so that output comes in the same order every time.
+.PP
+Flocate started life as the plocate code base. Since November 2025 it has been
+maintained and extended as flocate by Robert Tulke <rt@debian.sh>, who added
+the forensic tooling that distinguishes flocate from its upstream ancestor.
 
 When multiple patterns are given,
 .B flocate
@@ -177,8 +181,10 @@ If given, appended after the list of \fB\-\-database\fR paths
 Colon-delimiting and character escaping follows the same rules
 as for \fB\-\-database\fR.
 
-.SH AUTHOR
+.SH AUTHORS
 Steinar H. Gunderson <steinar+flocate@gunderson.no>
+.br
+Robert Tulke <rt@debian.sh> (flocate maintainer since November 2025)
 
 .SH SEE ALSO
 \fBflocate\-build\fP(8),

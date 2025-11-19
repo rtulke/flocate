@@ -23,6 +23,10 @@ inspects the metadata that
 stores inside a flocate database. It can replay the internal history log,
 diff two database snapshots, or compare a database against a live filesystem
 root (recomputing metadata and optional hashes).
+.PP
+Flocate (and thus \fBflocate-showdiff\fR) is a maintained fork of plocate.
+The flocate feature set, including this forensic diff tool, has been extended
+by Robert Tulke <rt@debian.sh> since November 2025.
 
 .SH OPTIONS
 .TP
@@ -66,3 +70,8 @@ Default flocate database (as consumed by the history mode).
 .BR flocate (1),
 .BR updatedb (8),
 .BR flocate-build (8)
+
+.SH AUTHORS
+Steinar H. Gunderson <steinar+flocate@gunderson.no>
+.br
+Robert Tulke <rt@debian.sh> (flocate maintainer since November 2025)
