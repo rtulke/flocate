@@ -23,6 +23,7 @@ With the companion tool flocate-showdiff, you can play back this history, compar
     specified root) against a database, recomputing metadata and hashes on the fly.
 - Everything ships with groff man pages (`flocate(1)`, `updatedb(8)`,
   `flocate-build(8)`, `flocate-showdiff(1)`).
+- Restructured file structure
 
 ## Building and Installing
 
