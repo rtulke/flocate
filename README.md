@@ -222,5 +222,7 @@ Otherwise, if plocate, mlocate, or locate are not needed, remove the installed l
 apt remove locate      # or plocate, mlocate
 ```
 
+## References
+
 - Refer to the installed man pages for the canonical CLI reference:
   `flocate(1)`, `updatedb(8)`, `flocate-build(8)`, and `flocate-showdiff(1)`.
