@@ -87,6 +87,72 @@ flocate-showdiff --live /mnt/backup /var/lib/flocate/flocate.db
 Outputs list the affected paths as well as old/new metadata (including hashes
 when available).
 
+## Command-line Reference
+
+### `flocate`
+
+| Option | Description |
+| --- | --- |
+| `-A`, `--all` | Ignored for mlocate compatibility. |
+| `-b`, `--basename` | Match against the filename component only. |
+| `-c`, `--count` | Suppress individual paths and print the total at the end. |
+| `-d`, `--database DBPATH` | Add one or more databases to search (colon-delimited list is accepted). |
+| `-e`, `--existing` | Report only entries that still exist at lookup time. |
+| `-i`, `--ignore-case` | Case-insensitive search (slower and limited Unicode folding). |
+| `-l`, `--limit LIMIT` | Stop after `LIMIT` matches; `--count` is capped at the same value. |
+| `-N`, `--literal` | Output raw paths without shell-style escaping. |
+| `-0`, `--null` | Separate matches with NUL instead of newlines. |
+| `-r`, `--regexp` | Treat patterns as POSIX basic regular expressions (forces linear scan). |
+| `--regex` | Treat patterns as POSIX extended regular expressions. |
+| `-w`, `--wholename` | Match against the full path (default unless `-b` was given earlier). |
+| `--help` | Show usage information. |
+| `--version`, `-V` | Print version/license information. |
+
+### `updatedb`
+
+| Option | Description |
+| --- | --- |
+| `-f`, `--add-prunefs FS` | Append whitespace-separated filesystems in `FS` to `PRUNEFS`. |
+| `-n`, `--add-prunenames NAMES` | Append whitespace-separated directory names to `PRUNENAMES`. |
+| `-e`, `--add-prunepaths PATHS` | Append whitespace-separated paths to `PRUNEPATHS`. |
+| `--add-single-prunepath PATH` | Append a single path (even with spaces) to `PRUNEPATHS`. |
+| `-U`, `--database-root PATH` | Restrict scanning to `PATH`. |
+| `--debug-pruning` | Emit verbose pruning diagnostics on stderr. |
+| `-h`, `--help` | Display usage information. |
+| `-o`, `--output FILE` | Write the database to `FILE` instead of the default. |
+| `--prune-bind-mounts FLAG` | Override `PRUNE_BIND_MOUNTS` (`yes`/`no`). |
+| `--prunefs FS` | Override `PRUNEFS` entirely. |
+| `--prunenames NAMES` | Override `PRUNENAMES` entirely. |
+| `--prunepaths PATHS` | Override `PRUNEPATHS` entirely. |
+| `--metadata-hash ALGO` | Hash regular files with `none`, `xxh64`, or `sha256`. |
+| `--history-depth N` | Keep metadata/history for the newest `N` runs (0 disables history). |
+| `-l`, `--require-visibility FLAG` | Toggle permission filtering in the generated database. |
+| `-v`, `--verbose` | Print each path as it is discovered. |
+| `-V`, `--version` | Print version/license information. |
+
+### `flocate-build`
+
+| Option | Description |
+| --- | --- |
+| `-b`, `--block-size SIZE` | Compress `SIZE` filenames per posting-list block (default 32). |
+| `-p`, `--plaintext` | Treat the input as newline-delimited plain text instead of an mlocate DB. |
+| `-l`, `--require-visibility FLAG` | Set the “require visibility” flag in the generated database. |
+| `--help` | Show usage information. |
+| `--version`, `-V` | Print version/license information. |
+
+### `flocate-showdiff`
+
+| Option | Description |
+| --- | --- |
+| `--history DB` | Replay the per-run history embedded in `DB`. |
+| `OLD_DB NEW_DB` | Positional arguments that trigger snapshot diff mode. |
+| `--live ROOT DB` | Compare `DB` against a live filesystem rooted at `ROOT`. |
+| `--added-only` | Filter the output to ADDED events. |
+| `--removed-only` | Filter the output to REMOVED events. |
+| `--modified-only` | Filter the output to MODIFIED events. |
+| `--help` | Show usage information. |
+| `--version`, `-V` | Print version/license information. |
+
 ## Configuration and Documentation
 
 - `/etc/updatedb.conf` understands the new `METADATA_HASH` and `HISTORY_DEPTH`
