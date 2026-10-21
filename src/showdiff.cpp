@@ -286,6 +286,8 @@ string decompress_block(const vector<char> &compressed, ZSTD_DCtx *ctx, ZSTD_DDi
 	return output;
 }
 
+// Filename blocks are NUL-separated, not NUL-terminated: the last path in a
+// block has no trailing zero byte, so it must be picked up after the loop.
 void extract_paths_from_block(const string &block, vector<string> *paths)
 {
 	const char *ptr = block.data();
@@ -293,7 +295,7 @@ void extract_paths_from_block(const string &block, vector<string> *paths)
 	while (ptr < end) {
 		const char *term = static_cast<const char *>(memchr(ptr, '\0', end - ptr));
 		if (term == nullptr) {
-			break;
+			term = end;
 		}
 		if (term != ptr) {
 			paths->emplace_back(ptr, term - ptr);
