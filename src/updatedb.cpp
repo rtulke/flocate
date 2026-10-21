@@ -1045,19 +1045,20 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			return a.name < b.name;
 		});
 
-	// Load directory modification times from the old database.
-	auto db_it = db_entries.begin();
-	for (entry &e : entries) {
-		for (; db_it != db_entries.end(); ++db_it) {
-			if (e.name < db_it->name) {
-				break;
-			}
-			if (e.name == db_it->name) {
-				e.db_modified = db_it->db_modified;
-				e.previous_metadata = db_it->previous_metadata;
-				e.existed_before = true;
-				db_it->matched_in_new_scan = true;
-				break;
+		// Load directory modification times from the old database.
+		auto db_it = db_entries.begin();
+		for (entry &e : entries) {
+			for (; db_it != db_entries.end(); ++db_it) {
+				if (e.name < db_it->name) {
+					break;
+				}
+				if (e.name == db_it->name) {
+					e.db_modified = db_it->db_modified;
+					e.previous_metadata = db_it->previous_metadata;
+					e.existed_before = true;
+					db_it->matched_in_new_scan = true;
+					break;
+				}
 			}
 		}
 	}
@@ -1182,12 +1183,16 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 	// Now scan subdirectories.
 	for (const entry &e : entries) {
-			if (e.is_directory && e.fd != -1) {
-				int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, existing_db, corpus, dict_builder, history_events);
+		if (e.is_directory && e.fd != -1) {
+			int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, existing_db, corpus, dict_builder, history_events);
 			if (ret == -1) {
 				// TODO: The unscanned file descriptors will leak, but it doesn't really matter,
 				// as we're about to exit.
-				closedir(dir);
+				if (dir != nullptr) {
+					closedir(dir);
+				} else {
+					close(fd);
+				}
 				return -1;
 			}
 		}
@@ -1198,8 +1203,6 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		return 0;
 	}
 	closedir(dir);
-	return 0;
-}
 	return 0;
 }
 
