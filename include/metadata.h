@@ -70,26 +70,70 @@ struct HistoryEvent {
 	FileMetadata new_metadata;
 };
 
-inline bool metadata_equals(const FileMetadata &a, const FileMetadata &b)
+inline bool dir_time_equals(const dir_time &a, const dir_time &b)
+{
+	return a.sec == b.sec && a.nsec == b.nsec;
+}
+
+inline bool hash_equals(const MetadataHash &a, const MetadataHash &b)
+{
+	return a.kind == b.kind &&
+	       a.length == b.length &&
+	       std::equal(a.value.begin(), a.value.begin() + a.length, b.value.begin());
+}
+
+// atime is excluded by default: with relatime (the usual mount default) it is
+// bumped by any reader at least once a day, including our own hashing pass,
+// which would flag every file as modified on every run.
+inline bool metadata_equals(const FileMetadata &a, const FileMetadata &b, bool compare_atime = false)
 {
 	if (a.enabled != b.enabled)
 		return false;
 	if (!a.enabled)
 		return true;
+	if (compare_atime && !dir_time_equals(a.atime, b.atime))
+		return false;
 	return a.mode == b.mode &&
 	       a.uid == b.uid &&
 	       a.gid == b.gid &&
 	       a.size == b.size &&
-	       a.mtime.sec == b.mtime.sec &&
-	       a.mtime.nsec == b.mtime.nsec &&
-	       a.ctime.sec == b.ctime.sec &&
-	       a.ctime.nsec == b.ctime.nsec &&
-	       a.atime.sec == b.atime.sec &&
-	       a.atime.nsec == b.atime.nsec &&
-	       a.hash.kind == b.hash.kind &&
-	       a.hash.length == b.hash.length &&
-	       std::equal(a.hash.value.begin(), a.hash.value.begin() + a.hash.length,
-	                  b.hash.value.begin());
+	       dir_time_equals(a.mtime, b.mtime) &&
+	       dir_time_equals(a.ctime, b.ctime) &&
+	       hash_equals(a.hash, b.hash);
+}
+
+// Comma-separated names of all fields that differ (atime included), for diagnostics.
+inline std::string metadata_diff_fields(const FileMetadata &a, const FileMetadata &b)
+{
+	std::string out;
+	auto add = [&out](const char *name) {
+		if (!out.empty())
+			out += ',';
+		out += name;
+	};
+	if (a.enabled != b.enabled) {
+		add(a.enabled ? "metadata-lost" : "metadata-gained");
+		return out;
+	}
+	if (!a.enabled)
+		return out;
+	if (a.mode != b.mode)
+		add("mode");
+	if (a.uid != b.uid)
+		add("uid");
+	if (a.gid != b.gid)
+		add("gid");
+	if (a.size != b.size)
+		add("size");
+	if (!dir_time_equals(a.mtime, b.mtime))
+		add("mtime");
+	if (!dir_time_equals(a.ctime, b.ctime))
+		add("ctime");
+	if (!dir_time_equals(a.atime, b.atime))
+		add("atime");
+	if (!hash_equals(a.hash, b.hash))
+		add("hash");
+	return out;
 }
 
 #endif  // METADATA_H

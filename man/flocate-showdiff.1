@@ -54,6 +54,15 @@ are reported as additions. This mode is useful for verifying backups or forensic
 snapshots.
 
 .TP
+.B --compare-atime
+In snapshot and live mode, treat a differing access time alone as a
+modification. By default atime is ignored (it changes on every read under
+.BR relatime ),
+but it is still printed and listed in the
+.B changed:
+line of MODIFIED events.
+
+.TP
 .B --help
 Show a short usage summary.
 

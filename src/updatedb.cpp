@@ -1088,7 +1088,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		const string full_path = path_plus_slash + e.name;
 		if (!e.existed_before) {
 			record_history_event(history_events, HistoryEventKind::Added, full_path, FileMetadata{}, e.metadata);
-		} else if (!metadata_equals(e.metadata, e.previous_metadata)) {
+		} else if (!metadata_equals(e.metadata, e.previous_metadata, conf_compare_atime)) {
 			record_history_event(history_events, HistoryEventKind::Modified, full_path, e.previous_metadata, e.metadata);
 		}
 	}

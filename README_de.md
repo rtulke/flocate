@@ -147,6 +147,7 @@ falls vorhanden).
 |             | `--prunepaths PFADE`          | `PRUNEPATHS` komplett ersetzen. |
 |             | `--metadata-hash ALGO`        | Reguläre Dateien mit `none`, `xxh64` oder `sha256` hashen. |
 |             | `--history-depth N`           | Metadaten/Historie für die letzten `N` Läufe speichern (`0` deaktiviert). |
+|             | `--compare-atime FLAG`        | Reine atime-Änderungen als MODIFIED protokollieren (`yes`/`no`, Standard `no`). |
 | `-l`        | `--require-visibility FLAG`   | Sichtbarkeitsprüfung durch locate aktivieren/deaktivieren. |
 | `-v`        | `--verbose`                   | Jeden gefundenen Pfad sofort ausgeben. |
 | `-V`        | `--version`                   | Versions-/Lizenztext ausgeben. |
@@ -171,13 +172,17 @@ falls vorhanden).
 |             | `--added-only`      | Nur ADDED-Ereignisse anzeigen. |
 |             | `--removed-only`    | Nur REMOVED-Ereignisse anzeigen. |
 |             | `--modified-only`   | Nur MODIFIED-Ereignisse anzeigen. |
+|             | `--compare-atime`   | Reine atime-Unterschiede im Diff-/Live-Modus als Änderung werten. |
 |             | `--help`            | Hilfe anzeigen. |
 | `-V`        | `--version`         | Versions-/Lizenztext ausgeben. |
 
 ## Konfiguration und Dokumentation
 
 - `/etc/updatedb.conf` versteht neben den klassischen Pruning-Optionen auch
-  `METADATA_HASH` und `HISTORY_DEPTH`.
+  `METADATA_HASH`, `HISTORY_DEPTH` und `COMPARE_ATIME`.
+- Zugriffszeiten (atime) werden gespeichert, aber standardmäßig nicht verglichen:
+  unter `relatime` setzt jeder Lesezugriff die atime neu, wodurch jede Datei als
+  MODIFIED erschiene. Bei Bedarf `COMPARE_ATIME="yes"` (oder `--compare-atime yes`) setzen.
 
 ## Troubleshooting
 

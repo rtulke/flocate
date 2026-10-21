@@ -356,7 +356,13 @@ bool compute_file_hash_at(int dirfd, const std::string &name, MetadataHashKind k
 		return true;
 	}
 	MetadataHashBuilder builder(kind);
-	int fd = openat(dirfd, name.c_str(), O_RDONLY | O_CLOEXEC);
+	// O_NOATIME keeps the hashing pass from touching the atime we just recorded.
+	// It requires CAP_FOWNER or ownership of the file, so retry without it on EPERM.
+	// O_NOFOLLOW guards against the entry having been swapped for a symlink since lstat().
+	int fd = openat(dirfd, name.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NOATIME);
+	if (fd == -1 && errno == EPERM) {
+		fd = openat(dirfd, name.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+	}
 	if (fd == -1) {
 		return false;
 	}

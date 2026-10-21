@@ -61,6 +61,8 @@ extern bool conf_verbose;
 extern std::string conf_block;
 extern MetadataHashKind conf_metadata_hash_kind;
 extern int conf_history_depth;
+/* true if atime changes alone should count as a modification */
+extern bool conf_compare_atime;
 
 /* Parse /etc/updatedb.conf and command-line arguments ARGC, ARGV.
    Exit on error or --help, --version. */

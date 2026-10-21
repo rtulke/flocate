@@ -72,6 +72,7 @@ int conf_block_size = 32;
 bool use_debug = false;
 MetadataHashKind conf_metadata_hash_kind = MetadataHashKind::None;
 int conf_history_depth = 1;
+bool conf_compare_atime = false;
 
 /* Parse a STR, store the parsed boolean value to DEST;
    return 0 if OK, -1 on error. */
@@ -178,7 +179,8 @@ enum {
 	UCT_PRUNENAMES,
 	UCT_PRUNEPATHS,
 	UCT_METADATA_HASH,
-	UCT_HISTORY_DEPTH
+	UCT_HISTORY_DEPTH,
+	UCT_COMPARE_ATIME
 };
 
 /* Return next token from uc_file; for UCT_IDENTIFIER, UCT_QUOTED or keywords,
@@ -242,6 +244,8 @@ uc_lex(void)
 			return UCT_METADATA_HASH;
 		if (uc_lex_buf == "HISTORY_DEPTH")
 			return UCT_HISTORY_DEPTH;
+		if (uc_lex_buf == "COMPARE_ATIME")
+			return UCT_COMPARE_ATIME;
 		return UCT_IDENTIFIER;
 	}
 	}
@@ -251,7 +255,7 @@ uc_lex(void)
 static void
 parse_updatedb_conf(void)
 {
-	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash, had_history_depth;
+	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash, had_history_depth, had_compare_atime;
 
 	uc_file = fopen(UPDATEDB_CONF, "r");
 	if (uc_file == NULL) {
@@ -269,6 +273,7 @@ parse_updatedb_conf(void)
 	had_prunepaths = false;
 	had_metadata_hash = false;
 	had_history_depth = false;
+	had_compare_atime = false;
 	for (;;) {
 		bool *had_var;
 		int var_token, token;
@@ -303,6 +308,10 @@ parse_updatedb_conf(void)
 
 		case UCT_HISTORY_DEPTH:
 			had_var = &had_history_depth;
+			break;
+
+		case UCT_COMPARE_ATIME:
+			had_var = &had_compare_atime;
 			break;
 
 		case UCT_IDENTIFIER:
@@ -359,6 +368,12 @@ parse_updatedb_conf(void)
 				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 				exit(EXIT_FAILURE);
 			}
+		} else if (var_token == UCT_COMPARE_ATIME) {
+			if (parse_bool(&conf_compare_atime, uc_lex_buf.c_str()) != 0) {
+				fprintf(stderr, "%s:%u: invalid value `%s' of COMPARE_ATIME\n",
+				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+				exit(EXIT_FAILURE);
+			}
 		} else
 			abort();
 		token = uc_lex();
@@ -406,6 +421,8 @@ help(void)
          "      --metadata-hash ALGO       hash regular files (none, xxh64,\n"
          "                                 sha256; default \"none\")\n"
          "      --history-depth N          keep metadata history for N runs\n"
+         "      --compare-atime FLAG       record atime-only changes as\n"
+         "                                 modifications (default \"no\")\n"
 	         "      --prune-bind-mounts FLAG   omit bind mounts (default "
 	         "\"no\")\n"
 	         "      --prunefs FS               filesystems to omit from "
@@ -455,7 +472,8 @@ parse_arguments(int argc, char *argv[])
 	enum { OPT_DEBUG_PRUNING = CHAR_MAX + 1,
 	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2,
 	       OPT_METADATA_HASH = CHAR_MAX + 3,
-	       OPT_HISTORY_DEPTH = CHAR_MAX + 4 };
+	       OPT_HISTORY_DEPTH = CHAR_MAX + 4,
+	       OPT_COMPARE_ATIME = CHAR_MAX + 5 };
 
 	static const struct option options[] = {
 		{ "add-prunefs", required_argument, NULL, 'f' },
@@ -473,6 +491,7 @@ parse_arguments(int argc, char *argv[])
 		{ "require-visibility", required_argument, NULL, 'l' },
 		{ "metadata-hash", required_argument, NULL, OPT_METADATA_HASH },
 		{ "history-depth", required_argument, NULL, OPT_HISTORY_DEPTH },
+		{ "compare-atime", required_argument, NULL, OPT_COMPARE_ATIME },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "version", no_argument, NULL, 'V' },
 		{ "block-size", required_argument, 0, 'b' },
@@ -590,6 +609,13 @@ parse_arguments(int argc, char *argv[])
 			if (conf_history_depth < 0) {
 				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
 				        program_invocation_name, optarg, "history-depth");
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case OPT_COMPARE_ATIME:
+			if (parse_bool(&conf_compare_atime, optarg) != 0) {
+				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
+				        program_invocation_name, optarg, "compare-atime");
 				exit(EXIT_FAILURE);
 			}
 			break;

@@ -132,6 +132,15 @@ Keep metadata/history logs for the most recent \fIN\fR runs. The default
 is \fB1\fR; setting \fIN\fR to \fB0\fR disables history tracking entirely.
 
 .TP
+\fB\-\-compare\-atime\fR \fIFLAG\fR
+One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
+If \fByes\fR, a changed access time alone is recorded as a MODIFIED history
+event. The default is \fBno\fR, because with the usual \fBrelatime\fR mount
+option every reader (backups, indexers, the hashing pass itself) bumps the atime
+and would make every file appear modified on every run. The atime is always
+stored in the database regardless of this setting.
+
+.TP
 \fB\-l\fR, \fB\-\-require\-visibility\fR \fIFLAG\fR
 Set the \*(lqrequire file visibility before reporting it\*(rq flag in the
 generated database to \fIFLAG\fR.

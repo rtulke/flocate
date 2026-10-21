@@ -103,6 +103,13 @@ inside the database. The default is \fB1\fR (only the most recent run).
 Setting it to \fB0\fR disables history collection entirely.
 
 .TP
+\fBCOMPARE_ATIME\fR
+One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
+If \fByes\fR, access time changes alone are recorded as modifications in the
+history log. The default is \fBno\fR; see the \fB\-\-compare\-atime\fR option in
+.BR updatedb (8).
+
+.TP
 \fBPRUNE_BIND_MOUNTS\fR
 One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
 If

@@ -141,6 +141,7 @@ when available).
 |              | `--prunepaths PATHS`          | Override `PRUNEPATHS` entirely. |
 |              | `--metadata-hash ALGO`        | Hash regular files with `none`, `xxh64`, or `sha256`. |
 |              | `--history-depth N`           | Keep metadata/history for the newest `N` runs (0 disables history). |
+|              | `--compare-atime FLAG`        | Record atime-only changes as MODIFIED (`yes`/`no`, default `no`). |
 | `-l`         | `--require-visibility FLAG`   | Toggle permission filtering in the generated database. |
 | `-v`         | `--verbose`                   | Print each path as it is discovered. |
 | `-V`         | `--version`                   | Print version/license information. |
@@ -165,13 +166,17 @@ when available).
 |              | `--added-only`                | Filter the output to ADDED events. |
 |              | `--removed-only`              | Filter the output to REMOVED events. |
 |              | `--modified-only`             | Filter the output to MODIFIED events. |
+|              | `--compare-atime`             | Treat atime-only differences as modifications in diff/live mode. |
 |              | `--help`                      | Show usage information. |
 | `-V`         | `--version`                   | Print version/license information. |
 
 ## Configuration and Documentation
 
-- `/etc/updatedb.conf` understands the new `METADATA_HASH` and `HISTORY_DEPTH`
-  variables in addition to the classic pruning knobs.
+- `/etc/updatedb.conf` understands the new `METADATA_HASH`, `HISTORY_DEPTH` and
+  `COMPARE_ATIME` variables in addition to the classic pruning knobs.
+- Access times are stored but not compared by default: under `relatime` every
+  reader bumps the atime, which would turn every file into a MODIFIED event.
+  Set `COMPARE_ATIME="yes"` (or `--compare-atime yes`) if you need that signal.
 
 ## Troubleshooting
 

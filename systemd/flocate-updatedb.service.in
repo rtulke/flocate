@@ -8,7 +8,7 @@ LimitNOFILE=131072
 IOSchedulingClass=idle
 Nice=19
 
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_CHOWN
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
 IPAddressDeny=any
 LockPersonality=true
 MemoryDenyWriteExecute=true

@@ -73,8 +73,10 @@ struct EventFilter {
 	}
 };
 
+// Whether atime differences alone count as a modification in diff and live mode.
+bool compare_atime = false;
+
 FileMetadata metadata_from_stat(const struct stat &sb);
-bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out);
 string normalize_root(string root);
 string map_db_to_real(const string &root, const string &db_path);
 string map_real_to_db(const string &root, const string &real_path);
@@ -193,10 +195,12 @@ string format_metadata(const FileMetadata &meta)
 		return "(none)";
 	}
 	char buf[512];
-	snprintf(buf, sizeof(buf), "mode=%o uid=%u gid=%u size=%llu mtime=%lld.%09d",
+	snprintf(buf, sizeof(buf), "mode=%o uid=%u gid=%u size=%llu mtime=%lld.%09d ctime=%lld.%09d atime=%lld.%09d",
 	         unsigned(meta.mode), unsigned(meta.uid), unsigned(meta.gid),
 	         static_cast<unsigned long long>(meta.size),
-	         static_cast<long long>(meta.mtime.sec), meta.mtime.nsec);
+	         static_cast<long long>(meta.mtime.sec), meta.mtime.nsec,
+	         static_cast<long long>(meta.ctime.sec), meta.ctime.nsec,
+	         static_cast<long long>(meta.atime.sec), meta.atime.nsec);
 	string out(buf);
 	if (meta.hash.kind != MetadataHashKind::None && meta.hash.length != 0) {
 		out += " hash=";
@@ -236,6 +240,7 @@ void print_event(const HistoryEvent &event)
 	} else {
 		printf("  old: %s\n", format_metadata(event.old_metadata).c_str());
 		printf("  new: %s\n", format_metadata(event.new_metadata).c_str());
+		printf("  changed: %s\n", metadata_diff_fields(event.old_metadata, event.new_metadata).c_str());
 	}
 }
 
@@ -479,7 +484,7 @@ vector<HistoryEvent> diff_snapshots(const Snapshot &old_snap, const Snapshot &ne
 	size_t i = 0, j = 0;
 	while (i < old_snap.paths.size() && j < new_snap.paths.size()) {
 		if (old_snap.paths[i] == new_snap.paths[j]) {
-			if (!metadata_equals(old_snap.metadata[i], new_snap.metadata[j])) {
+			if (!metadata_equals(old_snap.metadata[i], new_snap.metadata[j], compare_atime)) {
 				HistoryEvent event;
 				event.kind = HistoryEventKind::Modified;
 				event.path = new_snap.paths[j];
@@ -536,38 +541,6 @@ FileMetadata metadata_from_stat(const struct stat &sb)
 	meta.ctime = dir_time{ sb.st_ctim.tv_sec, int32_t(sb.st_ctim.tv_nsec) };
 	meta.atime = dir_time{ sb.st_atim.tv_sec, int32_t(sb.st_atim.tv_nsec) };
 	return meta;
-}
-
-bool compute_path_hash(const string &path, MetadataHashKind kind, MetadataHash *out)
-{
-	if (kind == MetadataHashKind::None || out == nullptr) {
-		if (out != nullptr) {
-			*out = MetadataHash{};
-		}
-		return true;
-	}
-	MetadataHashBuilder builder(kind);
-	int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-	if (fd == -1) {
-		return false;
-	}
-	vector<char> buffer(1 << 15);
-	while (true) {
-		ssize_t ret = read(fd, buffer.data(), buffer.size());
-		if (ret == 0) {
-			break;
-		}
-		if (ret < 0) {
-			int saved_errno = errno;
-			close(fd);
-			errno = saved_errno;
-			return false;
-		}
-		builder.update(buffer.data(), static_cast<size_t>(ret));
-	}
-	close(fd);
-	*out = builder.finalize();
-	return true;
 }
 
 string normalize_root(string root)
@@ -633,11 +606,11 @@ vector<HistoryEvent> diff_with_live(const Snapshot &snapshot, const string &root
 		}
 		FileMetadata live_meta = metadata_from_stat(sb);
 		if (hash_kind != MetadataHashKind::None && S_ISREG(sb.st_mode)) {
-			if (!compute_path_hash(real_path, hash_kind, &live_meta.hash)) {
+			if (!compute_file_hash_at(AT_FDCWD, real_path, hash_kind, &live_meta.hash)) {
 				live_meta.hash = MetadataHash{};
 			}
 		}
-		if (!metadata_equals(db_meta, live_meta)) {
+		if (!metadata_equals(db_meta, live_meta, compare_atime)) {
 			HistoryEvent event;
 			event.kind = HistoryEventKind::Modified;
 			event.path = db_path;
@@ -685,7 +658,7 @@ vector<HistoryEvent> diff_with_live(const Snapshot &snapshot, const string &root
 				event.path = db_path;
 				event.new_metadata = metadata_from_stat(sb);
 				if (hash_kind != MetadataHashKind::None && S_ISREG(sb.st_mode)) {
-					if (!compute_path_hash(child, hash_kind, &event.new_metadata.hash)) {
+					if (!compute_file_hash_at(AT_FDCWD, child, hash_kind, &event.new_metadata.hash)) {
 						event.new_metadata.hash = MetadataHash{};
 					}
 				}
@@ -709,6 +682,7 @@ void usage(const char *prog)
 	fprintf(stderr, "       --added-only     Show only ADDED events\n");
 	fprintf(stderr, "       --removed-only   Show only REMOVED events\n");
 	fprintf(stderr, "       --modified-only  Show only MODIFIED events\n");
+	fprintf(stderr, "       --compare-atime  Treat atime-only differences as modifications\n");
 }
 
 void version()
@@ -808,6 +782,8 @@ int main(int argc, char **argv)
 			filter.enable(HistoryEventKind::Removed);
 		} else if (strcmp(argv[i], "--modified-only") == 0) {
 			filter.enable(HistoryEventKind::Modified);
+		} else if (strcmp(argv[i], "--compare-atime") == 0) {
+			compare_atime = true;
 		} else {
 			dbs.push_back(argv[i]);
 		}
