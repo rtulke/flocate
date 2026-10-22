@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+UNIT = flocate-updatedb
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-Dupdatedb_progname=$(UNIT) \
+		-Dlocategroup=flocate \
+		-Dinstall_systemd=false
+
+# The units are expanded here instead of being installed by Meson, so that
+# dh_installsystemd puts them where this debhelper version expects them and
+# generates the enable/start snippets for the maintainer scripts.
+execute_before_dh_installsystemd:
+	sed -e 's|@sbindir@|/usr/sbin|g' -e 's|@updatedb_progname@|$(UNIT)|g' \
+		systemd/$(UNIT).service.in > debian/flocate.$(UNIT).service
+	cp systemd/$(UNIT).timer debian/flocate.$(UNIT).timer
+
+override_dh_installsystemd:
+	dh_installsystemd --name=$(UNIT)
+
+override_dh_installchangelogs:
+	dh_installchangelogs NEWS

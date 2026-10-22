@@ -47,3 +47,17 @@ FORENSICS_PROGRESS.md
 *.dwo
 
 
+
+# Packaging output (packaging/build-deb*.sh, dpkg-buildpackage)
+dist/
+obj-*/
+debian/flocate/
+debian/flocate-dbgsym/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.debhelper
+debian/*.debhelper.log
+debian/debhelper-build-stamp
+debian/flocate.flocate-updatedb.service
+debian/flocate.flocate-updatedb.timer

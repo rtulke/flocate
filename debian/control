@@ -1,0 +1,32 @@
+Source: flocate
+Section: utils
+Priority: optional
+Maintainer: Robert Tulke <rt@debian.sh>
+Build-Depends: debhelper-compat (= 13),
+               meson (>= 0.61),
+               ninja-build,
+               pkg-config,
+               libzstd-dev,
+               liburing-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/rtulke/flocate
+Vcs-Git: https://github.com/rtulke/flocate.git
+Vcs-Browser: https://github.com/rtulke/flocate
+Rules-Requires-Root: no
+
+Package: flocate
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Conflicts: locate, mlocate, plocate
+Replaces: mlocate, plocate
+Description: forensic locate - fast file index with metadata and change history
+ flocate is a fork of plocate. It keeps plocate's trigram index and query
+ speed and adds a forensic layer: updatedb stores per-file metadata (mode,
+ owner, size, timestamps, optional xxh64/sha256 hash) and a history of what
+ changed between runs inside the database. flocate-showdiff replays that
+ history, compares two databases, or compares a database against a live
+ directory tree.
+ .
+ The package replaces locate, mlocate and plocate: it provides the locate
+ and updatedb commands through the alternatives system, ships a daily
+ systemd timer and reads the usual /etc/updatedb.conf.

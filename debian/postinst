@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+GROUP="flocate"
+
+if [ "$1" = "configure" ]; then
+    if ! getent group "$GROUP" >/dev/null 2>&1; then
+        addgroup --system "$GROUP"
+    fi
+
+    # The query tool runs setgid so that unprivileged users can read the
+    # database. The bit is applied here through dpkg-statoverride rather
+    # than shipped in the package, so local overrides survive upgrades.
+    if ! dpkg-statoverride --list /usr/bin/flocate >/dev/null 2>&1; then
+        dpkg-statoverride --update --add root "$GROUP" 2755 /usr/bin/flocate
+    fi
+
+    update-alternatives --install /usr/bin/locate locate /usr/bin/flocate 95 \
+        --slave /usr/share/man/man1/locate.1.gz locate.1.gz /usr/share/man/man1/flocate.1.gz \
+        --slave /usr/bin/updatedb updatedb /usr/sbin/flocate-updatedb \
+        --slave /usr/share/man/man8/updatedb.8.gz updatedb.8.gz /usr/share/man/man8/flocate-updatedb.8.gz
+fi
+
+#DEBHELPER#
