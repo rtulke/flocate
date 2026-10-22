@@ -43,23 +43,23 @@ showdiff_sources = files('src/showdiff.cpp', 'src/metadata_hash.cpp', 'src/metad
 bench_sources = files('src/bench.cpp', 'src/io_uring_engine.cpp', 'src/turbopfor.cpp',
 	'src/complete_pread.cpp')
 
-executable('flocate', flocate_sources,
+flocate_exe = executable('flocate', flocate_sources,
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	include_directories: inc,
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', get_option('locategroup')])
-executable('flocate-build', flocate_build_sources,
+flocate_build_exe = executable('flocate-build', flocate_build_sources,
 	dependencies: [zstddep],
 	include_directories: inc,
 	install: true,
 	install_dir: get_option('sbindir'))
 updatedb_progname = get_option('updatedb_progname')
-executable(updatedb_progname, updatedb_sources,
+updatedb_exe = executable(updatedb_progname, updatedb_sources,
 	dependencies: [zstddep, threaddep],
 	include_directories: inc,
 	install: true,
 	install_dir: get_option('sbindir'))
-executable('flocate-showdiff', showdiff_sources,
+showdiff_exe = executable('flocate-showdiff', showdiff_sources,
 	dependencies: [zstddep],
 	include_directories: inc,
 	install: true,
@@ -114,6 +114,12 @@ if get_option('install_systemd')
 		install_data('systemd/flocate-updatedb.timer', install_dir: unitdir)
 	endif
 endif
+
+# End-to-end tests over the freshly built binaries; run with "meson test -C build".
+test('cli', find_program('tests/run-tests.sh'),
+	args: [meson.current_build_dir(), updatedb_progname],
+	depends: [flocate_exe, flocate_build_exe, updatedb_exe, showdiff_exe],
+	timeout: 900)
 
 # Requires having TurboPFor checked out, so not built by default.
 # Unless you have a recent Meson, there's no apparently good way
