@@ -46,7 +46,7 @@ flocate-showdiff --history /var/lib/flocate/flocate.db | grep -q baseline
 
 # The database is group-readable only; the setgid query tool makes it usable.
 useradd -m smoketester
-su smoketester -s /bin/sh -c "flocate -c '^/srv/smoke/a\.txt$'" | grep -qx 1
+[ "$(su smoketester -s /bin/sh -c "flocate -c -r '^/srv/smoke/a\.txt$'")" = 1 ]
 if su smoketester -s /bin/sh -c 'cat /var/lib/flocate/flocate.db >/dev/null 2>&1'; then
     echo "database must not be world-readable" >&2
     exit 1
