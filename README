@@ -1,40 +1,10 @@
-flocate is a locate based on posting lists. Compared to mlocate,
-it is much faster, and its index is much smaller. updatedb speed
-is similar (or you can convert mlocate's index to flocate format
-using flocate-build). It supports most mlocate options;
-see --help or the man page (man -l flocate.1) for more information.
+flocate is a forensic extension of plocate (https://plocate.sesse.net/):
+a locate based on posting lists whose updatedb additionally records
+per-file metadata, optional content hashes and a change history, plus the
+companion tool flocate-showdiff to replay, diff and verify that data.
 
-The file format may still change (if so, flocate will notify you itself
-that you need to rerun flocate-build or updatedb). To build and install,
-you will need a C++17 compiler and a development package for Zstd
-(https://facebook.github.io/zstd/). liburing (https://github.com/axboe/liburing)
-and a kernel supporting io_uring (Linux 5.1 or newer) is optional,
-but strongly recommended for best performance, especially if you
-do not have an SSD. Installation is run as:
-
-  meson setup obj
-  cd obj
-  ninja
-  sudo addgroup --system flocate
-  sudo ninja install
-  sudo systemctl enable --now flocate-updatedb.timer
-
-To build the database for the first time after install, you can do
-
-  sudo updatedb
-
-The initial run of updatedb needs to scan the entire filesystem.
-Subsequent runs of updatedb will be much faster, and create a slightly (~5%)
-smaller database.
-
-If you wish to run some tests of the TurboPFor implementation against
-the reference implementation, you can check it out and run as follows:
-
-  git clone https://github.com/powturbo/TurboPFor-Integer-Compression
-  ( cd TurboPFor-Integer-Compression && make -j8 )
-  cd obj
-  ninja reconfigure
-  ninja bench
+Build instructions, configuration and day-to-day usage are documented in
+README.md (English) and README_de.md (German).
 
 flocate (except updatedb), and the flocate-specific changes to updatedb,
 is Copyright 2020 Steinar H. Gunderson <steinar+flocate@gunderson.no>.
@@ -44,5 +14,9 @@ or (at your option) any later version. See the included file COPYING.
 updatedb is Copyright (C) 2005, 2007 Red Hat, Inc. All rights reserved.
 Licensed under the GNU General Public License, version 2. See the
 included file COPYING.
-flocate is derived from the original plocate project; see https://github.com/plocate/plocate
-for history and upstream development.
+
+The forensic extensions (metadata, hashing, history, flocate-showdiff)
+are Copyright (C) 2025 Robert Tulke <rt@debian.sh>, licensed under the
+GNU General Public License, version 2 or (at your option) any later version.
+flocate is derived from the original plocate project; see
+https://github.com/plocate/plocate for history and upstream development.

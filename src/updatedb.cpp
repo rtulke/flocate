@@ -67,30 +67,6 @@ using namespace std::chrono;
 /* Next conf_prunepaths entry */
 static size_t conf_prunepaths_index; /* = 0; */
 
-void usage()
-{
-	printf(
-		"Usage: updatedb FLOCATE_DB\n"
-		"\n"
-		"Generate flocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
-		"Normally, the destination should be /var/lib/mlocate/flocate.db.\n"
-		"\n"
-		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
-		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
-		"      --help             print this help\n"
-		"      --version          print version information\n");
-}
-
-void version()
-{
-	printf("updatedb %s\n", PACKAGE_VERSION);
-	printf("Copyright (C) 2007 Red Hat, Inc. All rights reserved.\n");
-	printf("Copyright 2020 Steinar H. Gunderson\n");
-	printf("This software is distributed under the GPL v.2.\n");
-	printf("\n");
-	printf("This program is provided with NO WARRANTY, to the extent permitted by law.\n");
-}
-
 int opendir_noatime(int dirfd, const char *path)
 {
 	static bool noatime_failed = false;

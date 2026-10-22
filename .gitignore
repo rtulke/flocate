@@ -1,5 +1,5 @@
-plocate
-plocate-build
+# Meson build directory used by the Makefile
+build/
 
 # Prerequisites
 *.d

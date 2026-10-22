@@ -252,6 +252,10 @@ int main(int argc, char **argv)
 		switch (c) {
 		case 'b':
 			block_size = atoi(optarg);
+			if (block_size <= 0) {
+				fprintf(stderr, "flocate-build: invalid value `%s' of --block-size\n", optarg);
+				exit(1);
+			}
 			break;
 		case 'p':
 			plaintext = true;

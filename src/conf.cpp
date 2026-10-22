@@ -92,6 +92,20 @@ parse_bool(bool *dest, const char *str)
 	return -1;
 }
 
+/* Parse a non-negative decimal integer; return true if OK. */
+static bool parse_int(int *dest, const char *str)
+{
+	if (*str == '\0')
+		return false;
+	char *end;
+	errno = 0;
+	long value = strtol(str, &end, 10);
+	if (errno != 0 || *end != '\0' || value < 0 || value > INT_MAX)
+		return false;
+	*dest = static_cast<int>(value);
+	return true;
+}
+
 /* Parse a byte count with an optional K, M, G or T suffix (powers of 1024);
    return true if OK. */
 static bool parse_size(uint64_t *dest, const char *str)
@@ -414,8 +428,7 @@ parse_updatedb_conf(void)
 				exit(EXIT_FAILURE);
 			}
 		} else if (var_token == UCT_HISTORY_DEPTH) {
-			conf_history_depth = atoi(uc_lex_buf.c_str());
-			if (conf_history_depth < 0) {
+			if (!parse_int(&conf_history_depth, uc_lex_buf.c_str())) {
 				fprintf(stderr, "%s:%u: invalid value `%s' of HISTORY_DEPTH\n",
 				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 				exit(EXIT_FAILURE);
@@ -671,8 +684,7 @@ parse_arguments(int argc, char *argv[])
 			}
 			break;
 		case OPT_HISTORY_DEPTH:
-			conf_history_depth = atoi(optarg);
-			if (conf_history_depth < 0) {
+			if (!parse_int(&conf_history_depth, optarg)) {
 				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
 				        program_invocation_name, optarg, "history-depth");
 				exit(EXIT_FAILURE);
@@ -739,7 +751,11 @@ parse_arguments(int argc, char *argv[])
 			break;
 
 		case 'b':
-			conf_block_size = atoi(optarg);
+			if (!parse_int(&conf_block_size, optarg) || conf_block_size == 0) {
+				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
+				        program_invocation_name, optarg, "block-size");
+				exit(EXIT_FAILURE);
+			}
 			break;
 
 		case 'D':

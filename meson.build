@@ -1,4 +1,4 @@
-project('flocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.24-dev')
+project('flocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.2.1-dev')
 
 add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
 add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
