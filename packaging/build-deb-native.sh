@@ -34,12 +34,16 @@ if [ "$CHANGELOG_VERSION" != "$DEB_VERSION" ]; then
     exit 1
 fi
 
-# Anything that is not the tagged release commit gets a snapshot suffix.
+# Anything that is not the tagged release commit gets a snapshot suffix. It
+# carries the commit timestamp (UTC, to the second) rather than the build date:
+# dpkg compares the suffix lexically, so two builds from the same day must not
+# be left to the order of their commit hashes.
 SNAPSHOT=""
 if [ "${FLOCATE_RELEASE:-0}" != 1 ] && git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
     HEAD_SHA=$(git -C "$REPO" rev-parse --short=7 HEAD)
     if ! git -C "$REPO" describe --tags --exact-match HEAD 2>/dev/null | grep -qx "v$VERSION"; then
-        SNAPSHOT="+git$(date -u +%Y%m%d).$HEAD_SHA"
+        HEAD_TIME=$(date -u -d "@$(git -C "$REPO" log -1 --format=%ct HEAD)" +%Y%m%d%H%M%S)
+        SNAPSHOT="+git$HEAD_TIME.$HEAD_SHA"
     fi
 fi
 
