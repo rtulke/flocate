@@ -59,11 +59,17 @@ root of
 .BR updatedb ,
 appended to
 .IR ROOT ).
-Every entry is stat(2)'d, hashes are recomputed when the database contains
-them, entries missing from the database are reported as ADDED and database
-entries missing on disk as REMOVED. PRUNEFS, PRUNENAMES and PRUNEPATHS from the
-configuration block stored in the database are honoured, pseudo filesystems are
-never hashed; bind mounts are not detected in this mode. Use
+Every entry is stat(2)'d, entries missing from the database are reported as
+ADDED and database entries missing on disk as REMOVED. Hashes are recomputed
+for the files the database stores a digest for (files above the HASH_MAX_SIZE
+of the
+.B updatedb
+run have none and are compared by their other attributes only) and for new
+files up to
+.BR --hash-max-size .
+PRUNEFS, PRUNENAMES and PRUNEPATHS from the configuration block stored in the
+database are honoured, pseudo filesystems are never hashed; bind mounts are not
+detected in this mode. Use
 .I ROOT
 = / to check the running system, or the mount point of an image or backup.
 
@@ -75,6 +81,16 @@ modification. By default atime is ignored (it changes on every read under
 but it is still printed and listed in the
 .B changed:
 line of MODIFIED events.
+
+.TP
+.BI --hash-max-size " SIZE"
+In live mode, do not hash files that are missing from the database and larger
+than
+.I SIZE
+(a byte count with an optional K, M, G or T suffix, powers of 1024). Files the
+database knows are never affected: they are hashed exactly when the database
+stores a digest for them. The default is no limit; pass the HASH_MAX_SIZE the
+database was built with to keep a check from reading new large files in full.
 
 .TP
 .B --json

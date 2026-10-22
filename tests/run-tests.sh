@@ -96,6 +96,7 @@ expect_contains "flocate -V" "flocate" "$("$FLOCATE" -V)"
 expect_contains "flocate-build --help" "plaintext" "$("$BUILD" --help 2>&1)"
 expect_contains "flocate-build --version" "flocate-build" "$("$BUILD" --version)"
 expect_contains "flocate-showdiff --help" "--json" "$("$SHOWDIFF" --help 2>&1)"
+expect_contains "flocate-showdiff --help lists --hash-max-size" "--hash-max-size" "$("$SHOWDIFF" --help 2>&1)"
 VER=$("$SHOWDIFF" --version | head -1)
 expect_contains "flocate-showdiff --version carries package version" "flocate-showdiff " "$VER"
 expect_not_contains "flocate-showdiff --version is not hard-coded" "1.1.24-dev" "$VER"
@@ -242,6 +243,18 @@ upd "$BDB" "$BIG" --metadata-hash sha256 --history-depth 5 --hash-max-size 2K
 J=$("$SHOWDIFF" --json "$EDB" "$BDB")
 expect_matches "file below --hash-max-size is hashed" "\"path\":\"$BIG/small\".*\"hex\"" "$J"
 expect_no_match "file above --hash-max-size has no hash" "\"path\":\"$BIG/large\".*\"hex\"" "$J"
+# Live mode must not hash what the database has no digest for: doing so would
+# read the file for nothing and report a bogus hash change.
+expect_contains "live mode leaves unhashed large files alone" "No differences" "$("$SHOWDIFF" --live / "$BDB")"
+head -c 3000 /dev/urandom >"$BIG/largenew"
+LJ=$("$SHOWDIFF" --json --live / "$BDB")
+expect_matches "live mode hashes new files by default" "\"kind\":\"ADDED\",\"path\":\"$BIG/largenew\".*\"hex\"" "$LJ"
+LJ=$("$SHOWDIFF" --json --live / --hash-max-size 2K "$BDB")
+expect_matches "live mode reports new files above --hash-max-size" "\"kind\":\"ADDED\",\"path\":\"$BIG/largenew\"" "$LJ"
+expect_no_match "live --hash-max-size skips hashing them" "\"path\":\"$BIG/largenew\".*\"hex\"" "$LJ"
+expect_status "showdiff rejects --hash-max-size 12X" 1 "$SHOWDIFF" --live / --hash-max-size 12X "$BDB"
+expect_status "showdiff rejects --hash-max-size without a value" 1 "$SHOWDIFF" --live / "$BDB" --hash-max-size
+rm "$BIG/largenew"
 upd "$BDB" "$BIG" --metadata-hash sha256 --history-depth 5 --hash-max-size 1M
 J2=$("$SHOWDIFF" --json "$EDB" "$BDB")
 expect_matches "raising the limit hashes the large file on the next run" "\"path\":\"$BIG/large\".*\"hex\"" "$J2"

@@ -2,6 +2,7 @@
 #include "metadata.h"
 #include "metadata_codec.h"
 #include "metadata_hash.h"
+#include "parse_size.h"
 
 #include <algorithm>
 #include <cstring>
@@ -91,6 +92,10 @@ struct EventFilter {
 bool compare_atime = false;
 // Emit one JSON object per line instead of the human-readable format.
 bool json_output = false;
+// Live mode: largest file (in bytes) that is hashed when it is not in the
+// database; 0 means no limit. Files the database knows are hashed exactly when
+// the database stores a digest for them, see diff_with_live().
+uint64_t hash_max_size = 0;
 
 // ---------------------------------------------------------------------------
 // Database reading
@@ -815,15 +820,28 @@ bool diff_with_live(const Snapshot &snapshot, const string &root, vector<History
 			const string db_path = join_path(dir.db, de->d_name);
 			const string real_path = join_path(dir.real, de->d_name);
 			FileMetadata live = metadata_from_stat(sb);
-			if (hash_kind != MetadataHashKind::None && dir.hash_allowed && S_ISREG(sb.st_mode)) {
-				if (!compute_file_hash_at(dfd, de->d_name, hash_kind, &live.hash)) {
-					live.hash = MetadataHash{};
-				}
+			auto it = lower_bound(snapshot.paths.begin(), snapshot.paths.end(), db_path);
+			const bool known = it != snapshot.paths.end() && *it == db_path;
+			const size_t idx = known ? static_cast<size_t>(it - snapshot.paths.begin()) : 0;
+
+			// Hash the live file only where the result can be compared with
+			// something. updatedb stores no digest for files above its
+			// HASH_MAX_SIZE, so hashing those here would read them for nothing
+			// and then flag a bogus hash change. Files unknown to the database
+			// are hashed up to --hash-max-size so a new multi-gigabyte file does
+			// not turn a check into a full read of the disk.
+			bool want_hash = hash_kind != MetadataHashKind::None && dir.hash_allowed && S_ISREG(sb.st_mode);
+			if (want_hash && known) {
+				const MetadataHash &stored = snapshot.metadata[idx].hash;
+				want_hash = stored.kind != MetadataHashKind::None && stored.length != 0;
+			} else if (want_hash) {
+				want_hash = hash_max_size == 0 || static_cast<uint64_t>(sb.st_size) <= hash_max_size;
+			}
+			if (want_hash && !compute_file_hash_at(dfd, de->d_name, hash_kind, &live.hash)) {
+				live.hash = MetadataHash{};
 			}
 
-			auto it = lower_bound(snapshot.paths.begin(), snapshot.paths.end(), db_path);
-			if (it != snapshot.paths.end() && *it == db_path) {
-				const size_t idx = it - snapshot.paths.begin();
+			if (known) {
 				seen[idx] = true;
 				if (!metadata_equals(snapshot.metadata[idx], live, compare_atime)) {
 					events.push_back(make_event(HistoryEventKind::Modified, db_path, snapshot.metadata[idx], live));
@@ -872,6 +890,9 @@ void usage(const char *prog)
 	fprintf(stderr, "       --removed-only   Show only REMOVED events\n");
 	fprintf(stderr, "       --modified-only  Show only MODIFIED events\n");
 	fprintf(stderr, "       --compare-atime  Treat atime-only differences as modifications\n");
+	fprintf(stderr, "       --hash-max-size SIZE\n");
+	fprintf(stderr, "                        Live mode: do not hash new files larger than SIZE\n");
+	fprintf(stderr, "                        (K/M/G/T suffixes; default: no limit)\n");
 	fprintf(stderr, "       --json           Print one JSON object per event\n");
 	fprintf(stderr, "       --help           Show this help\n");
 	fprintf(stderr, "  -V,  --version        Print version information\n");
@@ -962,6 +983,13 @@ int main(int argc, char **argv)
 			filter.enable(HistoryEventKind::Modified);
 		} else if (strcmp(argv[i], "--compare-atime") == 0) {
 			compare_atime = true;
+		} else if (strcmp(argv[i], "--hash-max-size") == 0) {
+			if (i + 1 >= argc || !parse_size(&hash_max_size, argv[i + 1])) {
+				fprintf(stderr, "%s: --hash-max-size needs a size such as 100M\n", argv[0]);
+				usage(argv[0]);
+				return EXIT_FAILURE;
+			}
+			++i;
 		} else if (strcmp(argv[i], "--json") == 0) {
 			json_output = true;
 		} else if (argv[i][0] == '-' && argv[i][1] != '\0') {

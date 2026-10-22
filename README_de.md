@@ -171,7 +171,10 @@ sudo flocate-showdiff /var/backups/flocate-2026-10-01.db /var/lib/flocate/flocat
 
 `--live ROOT` durchläuft den Baum, für den die Datenbank erstellt wurde,
 unterhalb von `ROOT`, berechnet Metadaten und Hashes neu und meldet
-Abweichungen:
+Abweichungen. Hashes werden nur für Dateien neu berechnet, für die die
+Datenbank einen Hash hat; Dateien oberhalb der `HASH_MAX_SIZE` des Scans
+werden also über ihre übrigen Attribute verglichen. Neue Dateien werden bis
+`--hash-max-size` gehasht (Standard: kein Limit):
 
 ```sh
 sudo flocate-showdiff --live /mnt/image  /var/backups/flocate-2026-10-01.db   # eingehängtes Image
@@ -282,6 +285,7 @@ Historie.
 |             | `--removed-only`    | Nur REMOVED-Ereignisse anzeigen. |
 |             | `--modified-only`   | Nur MODIFIED-Ereignisse anzeigen. |
 |             | `--compare-atime`   | Reine atime-Unterschiede im Diff-/Live-Modus als Änderung werten. |
+|             | `--hash-max-size SIZE` | Live-Modus: neue Dateien größer als `SIZE` nicht hashen (Suffixe `K`/`M`/`G`/`T`, Standard: kein Limit). Bekannte Dateien werden genau dann gehasht, wenn die Datenbank einen Hash für sie hat. |
 |             | `--json`            | Ein JSON-Objekt pro Ereignis statt des Textformats ausgeben. |
 |             | `--help`            | Hilfe anzeigen. |
 | `-V`        | `--version`         | Versions-/Lizenzinformationen ausgeben. |

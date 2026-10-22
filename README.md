@@ -165,7 +165,10 @@ sudo flocate-showdiff /var/backups/flocate-2026-10-01.db /var/lib/flocate/flocat
 ### 4. Verify a backup, image or the running system
 
 `--live ROOT` walks the tree the database was built for, appended to `ROOT`,
-recomputes metadata and hashes and reports what differs:
+recomputes metadata and hashes and reports what differs. Hashes are only
+recomputed for files the database has a digest for, so files above the
+`HASH_MAX_SIZE` of the scan are compared by their other attributes; new files
+are hashed up to `--hash-max-size` (default: no limit):
 
 ```sh
 sudo flocate-showdiff --live /mnt/image  /var/backups/flocate-2026-10-01.db   # mounted image
@@ -274,6 +277,7 @@ Databases produced by `flocate-build` contain no metadata or history.
 |              | `--removed-only`              | Filter the output to REMOVED events. |
 |              | `--modified-only`             | Filter the output to MODIFIED events. |
 |              | `--compare-atime`             | Treat atime-only differences as modifications in diff/live mode. |
+|              | `--hash-max-size SIZE`        | Live mode: do not hash new files larger than `SIZE` (`K`/`M`/`G`/`T` suffixes, default no limit). Known files are hashed exactly when the database has a digest for them. |
 |              | `--json`                      | Print one JSON object per event instead of the text format. |
 |              | `--help`                      | Show usage information. |
 | `-V`         | `--version`                   | Print version/license information. |

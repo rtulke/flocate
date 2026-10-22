@@ -24,6 +24,12 @@ flocate 1.2.1, unreleased
   - Fix flocate-showdiff losing the last filename of every block, which
     misaligned paths and metadata in snapshot and live mode.
 
+  - flocate-showdiff --live no longer hashes files the database stores no
+    digest for (those above the HASH_MAX_SIZE of the scan), which read
+    every large file in full and then reported each of them as MODIFIED
+    with a bogus hash change. New files are hashed up to the new
+    --hash-max-size option (default: no limit).
+
   - Access times are stored but no longer compared by default; new
     --compare-atime FLAG / COMPARE_ATIME. Hashing opens files with
     O_NOATIME, the systemd unit grants CAP_FOWNER.
