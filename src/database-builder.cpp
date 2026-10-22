@@ -1,6 +1,7 @@
 #include "database-builder.h"
 
 #include "dprintf.h"
+#include "metadata_codec.h"
 #include "turbopfor-encode.h"
 
 #include <algorithm>
@@ -26,60 +27,6 @@ using namespace std;
 using namespace std::chrono;
 
 constexpr unsigned num_overflow_slots = 16;
-
-namespace {
-
-template<class T>
-void append_raw(string &dst, const T &value)
-{
-	dst.append(reinterpret_cast<const char *>(&value), sizeof(value));
-}
-
-void encode_metadata_record(string &dst, const FileMetadata &metadata)
-{
-	if (!metadata.enabled) {
-		dst.push_back('\0');
-		return;
-	}
-
-	dst.push_back('\1');
-	append_raw(dst, metadata.mode);
-	append_raw(dst, metadata.uid);
-	append_raw(dst, metadata.gid);
-	append_raw(dst, metadata.size);
-	append_raw(dst, metadata.mtime.sec);
-	append_raw(dst, metadata.mtime.nsec);
-	append_raw(dst, metadata.ctime.sec);
-	append_raw(dst, metadata.ctime.nsec);
-	append_raw(dst, metadata.atime.sec);
-	append_raw(dst, metadata.atime.nsec);
-
-	dst.push_back(static_cast<char>(metadata.hash.kind));
-	uint8_t hash_len = metadata.hash.length;
-	assert(hash_len <= metadata.hash.value.size());
-	dst.push_back(static_cast<char>(hash_len));
-	if (hash_len != 0) {
-		dst.append(reinterpret_cast<const char *>(metadata.hash.value.data()), hash_len);
-	}
-}
-
-string encode_history_stream(const vector<HistoryEvent> &events)
-{
-	string buf;
-	for (const HistoryEvent &event : events) {
-		buf.push_back(static_cast<char>(event.kind));
-		append_raw(buf, event.event_time.sec);
-		append_raw(buf, event.event_time.nsec);
-		uint32_t path_len = event.path.size();
-		append_raw(buf, path_len);
-		buf.append(event.path.data(), path_len);
-		encode_metadata_record(buf, event.old_metadata);
-		encode_metadata_record(buf, event.new_metadata);
-	}
-	return buf;
-}
-
-}  // namespace
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
@@ -658,7 +605,8 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 		exit(1);
 	}
 
-	// Write the header.
+	// Write the header. Zero it first so padding bytes are deterministic on disk.
+	memset(&hdr, 0, sizeof(hdr));
 	memcpy(hdr.magic, "\0flocate", 8);
 	hdr.version = -1;  // Mark as broken.
 	hdr.hashtable_size = 0;  // Not known yet.
@@ -820,7 +768,7 @@ if (!compressed_metadata.empty()) {
 	fwrite(compressed_metadata.data(), compressed_metadata.size(), 1, outfp);
 	bytes_for_metadata = compressed_metadata.size();
 	compressed_metadata.clear();
-	hdr.metadata_flags = METADATA_FLAG_POSIX_V1;
+	hdr.metadata_flags = METADATA_FLAG_POSIX_V2;
 }
 
 	size_t bytes_for_history = 0;

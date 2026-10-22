@@ -37,7 +37,8 @@ struct Header {
 
 enum MetadataFlags : uint32_t {
 	METADATA_FLAG_NONE = 0,
-	METADATA_FLAG_POSIX_V1 = 1 << 0,
+	METADATA_FLAG_POSIX_V1 = 1 << 0,  // Host byte order, native xxh64 layout. No longer written or read.
+	METADATA_FLAG_POSIX_V2 = 1 << 1,  // Little-endian records, canonical (big-endian) xxh64 digests. See metadata_codec.h.
 };
 
 struct Trigram {

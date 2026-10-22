@@ -29,6 +29,7 @@ any later version.
 #include "db.h"
 #include "dprintf.h"
 #include "io_uring_engine.h"
+#include "metadata_codec.h"
 #include "metadata_hash.h"
 #include "lib.h"
 
@@ -253,100 +254,6 @@ void record_history_event(vector<HistoryEvent> *history, HistoryEventKind kind, 
 	history->push_back(move(event));
 }
 
-bool decode_history_metadata(const char *&ptr, const char *end, FileMetadata &meta)
-{
-	if (ptr >= end) {
-		return false;
-	}
-	unsigned char flag = static_cast<unsigned char>(*ptr++);
-	if (flag == 0) {
-		meta = FileMetadata{};
-		return true;
-	}
-	const size_t fixed = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
-		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
-		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
-		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
-	if (static_cast<size_t>(end - ptr) < fixed + 2) {
-		return false;
-	}
-	memcpy(&meta.mode, ptr, sizeof(meta.mode));
-	ptr += sizeof(meta.mode);
-	memcpy(&meta.uid, ptr, sizeof(meta.uid));
-	ptr += sizeof(meta.uid);
-	memcpy(&meta.gid, ptr, sizeof(meta.gid));
-	ptr += sizeof(meta.gid);
-	memcpy(&meta.size, ptr, sizeof(meta.size));
-	ptr += sizeof(meta.size);
-	memcpy(&meta.mtime.sec, ptr, sizeof(meta.mtime.sec));
-	ptr += sizeof(meta.mtime.sec);
-	memcpy(&meta.mtime.nsec, ptr, sizeof(meta.mtime.nsec));
-	ptr += sizeof(meta.mtime.nsec);
-	memcpy(&meta.ctime.sec, ptr, sizeof(meta.ctime.sec));
-	ptr += sizeof(meta.ctime.sec);
-	memcpy(&meta.ctime.nsec, ptr, sizeof(meta.ctime.nsec));
-	ptr += sizeof(meta.ctime.nsec);
-	memcpy(&meta.atime.sec, ptr, sizeof(meta.atime.sec));
-	ptr += sizeof(meta.atime.sec);
-	memcpy(&meta.atime.nsec, ptr, sizeof(meta.atime.nsec));
-	ptr += sizeof(meta.atime.nsec);
-	meta.enabled = true;
-	meta.hash.kind = static_cast<MetadataHashKind>(*ptr++);
-	uint8_t hash_len = static_cast<uint8_t>(*ptr++);
-	if (static_cast<size_t>(end - ptr) < hash_len) {
-		return false;
-	}
-	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
-	if (meta.hash.length > 0) {
-		memcpy(meta.hash.value.data(), ptr, meta.hash.length);
-	}
-	ptr += hash_len;
-	return true;
-}
-
-vector<HistoryEvent> decode_history_stream(const string &data)
-{
-	vector<HistoryEvent> events;
-	const char *ptr = data.data();
-	const char *end = ptr + data.size();
-	if (ptr == end) {
-		return events;
-	}
-	while (ptr < end) {
-		if (static_cast<size_t>(end - ptr) < 1 + sizeof(int64_t) + sizeof(int32_t) + sizeof(uint32_t)) {
-			break;
-		}
-		HistoryEvent event;
-		event.kind = static_cast<HistoryEventKind>(*ptr++);
-		memcpy(&event.event_time.sec, ptr, sizeof(event.event_time.sec));
-		ptr += sizeof(event.event_time.sec);
-		memcpy(&event.event_time.nsec, ptr, sizeof(event.event_time.nsec));
-		ptr += sizeof(event.event_time.nsec);
-		uint32_t path_len;
-		memcpy(&path_len, ptr, sizeof(path_len));
-		ptr += sizeof(path_len);
-		if (static_cast<size_t>(end - ptr) < path_len) {
-			break;
-		}
-		event.path.assign(ptr, path_len);
-		ptr += path_len;
-		if (!decode_history_metadata(ptr, end, event.old_metadata)) {
-			break;
-		}
-		if (!decode_history_metadata(ptr, end, event.new_metadata)) {
-			break;
-		}
-		events.push_back(move(event));
-	}
-	if (!events.empty() && events.front().kind != HistoryEventKind::RunMarker) {
-		HistoryEvent marker;
-		marker.kind = HistoryEventKind::RunMarker;
-		marker.event_time = events.front().event_time;
-		events.insert(events.begin(), marker);
-	}
-	return events;
-}
-
 string decompress_history_blob(const vector<char> &compressed)
 {
 	ZSTD_DCtx *ctx = ZSTD_createDCtx();
@@ -538,7 +445,14 @@ ExistingDB::ExistingDB(int fd)
 	}
 	compressed_dir_time_pos = hdr.directory_data_offset_bytes;
 
-	if (hdr.metadata_length_bytes != 0 && (hdr.metadata_flags & METADATA_FLAG_POSIX_V1)) {
+	if (hdr.metadata_length_bytes != 0) {
+		if (!(hdr.metadata_flags & METADATA_FLAG_POSIX_V2)) {
+			if (conf_verbose) {
+				fprintf(stderr, "Old database has an outdated metadata format (flags=%u), ignoring.\n", hdr.metadata_flags);
+			}
+			error = true;
+			return;
+		}
 		metadata_available = true;
 		compressed_metadata_pos = hdr.metadata_offset_bytes;
 		metadata_ctx = ZSTD_createDCtx();
@@ -640,67 +554,44 @@ bool ExistingDB::refill_metadata_block()
 
 void ExistingDB::read_next_metadata_record()
 {
+	last_metadata_record = {};
 	if (!metadata_available) {
-		last_metadata_record = {};
 		return;
 	}
-
-	if (!ensure_metadata_bytes(1)) {
-		last_metadata_record = {};
+	auto fail = [this] {
 		metadata_available = false;
-		return;
-	}
-
-	FileMetadata meta;
-	meta.enabled = (*reinterpret_cast<const unsigned char *>(current_metadata_block.data() + current_metadata_offset)) != 0;
-	++current_metadata_offset;
-
-	if (!meta.enabled) {
-		last_metadata_record = meta;
-		return;
-	}
-
-	const size_t fixed_bytes = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
-		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
-		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
-		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
-	if (!ensure_metadata_bytes(fixed_bytes + 2)) {
-		last_metadata_record = {};
-		metadata_available = false;
-		return;
-	}
-
-	auto read_scalar = [this](auto *dst) {
-		memcpy(dst, current_metadata_block.data() + current_metadata_offset, sizeof(*dst));
-		current_metadata_offset += sizeof(*dst);
+		if (conf_verbose) {
+			fprintf(stderr, "Metadata stream of the old database ended prematurely; remaining entries are treated as new.\n");
+		}
 	};
 
-	read_scalar(&meta.mode);
-	read_scalar(&meta.uid);
-	read_scalar(&meta.gid);
-	read_scalar(&meta.size);
-	read_scalar(&meta.mtime.sec);
-	read_scalar(&meta.mtime.nsec);
-	read_scalar(&meta.ctime.sec);
-	read_scalar(&meta.ctime.nsec);
-	read_scalar(&meta.atime.sec);
-	read_scalar(&meta.atime.nsec);
-
-	meta.hash.kind = static_cast<MetadataHashKind>(static_cast<unsigned char>(*(current_metadata_block.data() + current_metadata_offset)));
-	++current_metadata_offset;
-	uint8_t hash_len = static_cast<uint8_t>(*(current_metadata_block.data() + current_metadata_offset));
-	++current_metadata_offset;
-	if (!ensure_metadata_bytes(hash_len)) {
-		last_metadata_record = {};
-		metadata_available = false;
+	// Pull in bytes until the whole record is buffered: one byte says whether
+	// there is metadata at all, the fixed part plus two bytes gives the hash length.
+	// ensure_metadata_bytes() may move the buffer, so always index via the offset.
+	if (!ensure_metadata_bytes(1)) {
+		fail();
 		return;
 	}
-	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
-	if (meta.hash.length != 0) {
-		memcpy(meta.hash.value.data(), current_metadata_block.data() + current_metadata_offset, meta.hash.length);
+	if (static_cast<uint8_t>(current_metadata_block[current_metadata_offset]) != 0) {
+		const size_t up_to_hash_len = 1 + METADATA_RECORD_FIXED_BYTES + 2;
+		if (!ensure_metadata_bytes(up_to_hash_len)) {
+			fail();
+			return;
+		}
+		const uint8_t hash_len = static_cast<uint8_t>(current_metadata_block[current_metadata_offset + up_to_hash_len - 1]);
+		if (!ensure_metadata_bytes(up_to_hash_len + hash_len)) {
+			fail();
+			return;
+		}
 	}
-	current_metadata_offset += hash_len;
-	last_metadata_record = meta;
+
+	const char *ptr = current_metadata_block.data() + current_metadata_offset;
+	const char *end = current_metadata_block.data() + current_metadata_block.size();
+	if (!decode_metadata_record(&ptr, end, &last_metadata_record)) {
+		fail();
+		return;
+	}
+	current_metadata_offset = ptr - current_metadata_block.data();
 }
 
 pair<string, dir_time> ExistingDB::read_next()

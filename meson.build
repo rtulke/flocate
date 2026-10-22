@@ -35,10 +35,11 @@ inc = include_directories('include')
 flocate_sources = files('src/flocate.cpp', 'src/io_uring_engine.cpp', 'src/turbopfor.cpp',
 	'src/parse_trigrams.cpp', 'src/serializer.cpp', 'src/access_rx_cache.cpp',
 	'src/needle.cpp', 'src/complete_pread.cpp')
-flocate_build_sources = files('src/flocate-build.cpp', 'src/database-builder.cpp')
+flocate_build_sources = files('src/flocate-build.cpp', 'src/database-builder.cpp', 'src/metadata_codec.cpp')
 updatedb_sources = files('src/updatedb.cpp', 'src/database-builder.cpp', 'src/conf.cpp',
-	'src/lib.cpp', 'src/bind-mount.cpp', 'src/complete_pread.cpp', 'src/metadata_hash.cpp')
-showdiff_sources = files('src/showdiff.cpp', 'src/metadata_hash.cpp')
+	'src/lib.cpp', 'src/bind-mount.cpp', 'src/complete_pread.cpp', 'src/metadata_hash.cpp',
+	'src/metadata_codec.cpp')
+showdiff_sources = files('src/showdiff.cpp', 'src/metadata_hash.cpp', 'src/metadata_codec.cpp')
 bench_sources = files('src/bench.cpp', 'src/io_uring_engine.cpp', 'src/turbopfor.cpp',
 	'src/complete_pread.cpp')
 

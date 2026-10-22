@@ -326,8 +326,11 @@ MetadataHash MetadataHashBuilder::finalize_xxh64()
 {
 	MetadataHash hash;
 	hash.kind = MetadataHashKind::XxHash64;
-	uint64_t value = xxh_state.digest();
-	memcpy(hash.value.data(), &value, sizeof(value));
+	// Store the canonical (big-endian) form so the hex representation matches xxhsum(1).
+	const uint64_t value = xxh_state.digest();
+	for (int i = 0; i < 8; ++i) {
+		hash.value[i] = static_cast<uint8_t>(value >> (56 - 8 * i));
+	}
 	hash.length = sizeof(value);
 	return hash;
 }

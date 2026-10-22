@@ -1,5 +1,6 @@
 #include "db.h"
 #include "metadata.h"
+#include "metadata_codec.h"
 #include "metadata_hash.h"
 
 #include <algorithm>
@@ -135,60 +136,6 @@ string decompress_stream(const vector<char> &compressed)
 	return output;
 }
 
-bool decode_metadata(const char *&ptr, const char *end, FileMetadata &meta)
-{
-	if (ptr >= end) {
-		return false;
-	}
-	unsigned char enabled = static_cast<unsigned char>(*ptr++);
-	if (enabled == 0) {
-		meta = FileMetadata{};
-		return true;
-	}
-
-	const size_t fixed = sizeof(meta.mode) + sizeof(meta.uid) + sizeof(meta.gid) + sizeof(meta.size) +
-		sizeof(meta.mtime.sec) + sizeof(meta.mtime.nsec) +
-		sizeof(meta.ctime.sec) + sizeof(meta.ctime.nsec) +
-		sizeof(meta.atime.sec) + sizeof(meta.atime.nsec);
-	if (static_cast<size_t>(end - ptr) < fixed + 2) {
-		return false;
-	}
-
-	memcpy(&meta.mode, ptr, sizeof(meta.mode));
-	ptr += sizeof(meta.mode);
-	memcpy(&meta.uid, ptr, sizeof(meta.uid));
-	ptr += sizeof(meta.uid);
-	memcpy(&meta.gid, ptr, sizeof(meta.gid));
-	ptr += sizeof(meta.gid);
-	memcpy(&meta.size, ptr, sizeof(meta.size));
-	ptr += sizeof(meta.size);
-	memcpy(&meta.mtime.sec, ptr, sizeof(meta.mtime.sec));
-	ptr += sizeof(meta.mtime.sec);
-	memcpy(&meta.mtime.nsec, ptr, sizeof(meta.mtime.nsec));
-	ptr += sizeof(meta.mtime.nsec);
-	memcpy(&meta.ctime.sec, ptr, sizeof(meta.ctime.sec));
-	ptr += sizeof(meta.ctime.sec);
-	memcpy(&meta.ctime.nsec, ptr, sizeof(meta.ctime.nsec));
-	ptr += sizeof(meta.ctime.nsec);
-	memcpy(&meta.atime.sec, ptr, sizeof(meta.atime.sec));
-	ptr += sizeof(meta.atime.sec);
-	memcpy(&meta.atime.nsec, ptr, sizeof(meta.atime.nsec));
-	ptr += sizeof(meta.atime.nsec);
-	meta.enabled = true;
-
-	meta.hash.kind = static_cast<MetadataHashKind>(*ptr++);
-	uint8_t hash_len = static_cast<uint8_t>(*ptr++);
-	if (static_cast<size_t>(end - ptr) < hash_len) {
-		return false;
-	}
-	meta.hash.length = min<size_t>(hash_len, meta.hash.value.size());
-	if (meta.hash.length > 0) {
-		memcpy(meta.hash.value.data(), ptr, meta.hash.length);
-	}
-	ptr += hash_len;
-	return true;
-}
-
 string format_metadata(const FileMetadata &meta)
 {
 	if (!meta.enabled) {
@@ -318,8 +265,14 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 		close(fd);
 		return false;
 	}
-	if (hdr.metadata_length_bytes == 0) {
+	if (hdr.max_version < 3 || hdr.metadata_length_bytes == 0) {
 		fprintf(stderr, "%s: database does not contain metadata\n", filename);
+		close(fd);
+		return false;
+	}
+	if (!(hdr.metadata_flags & METADATA_FLAG_POSIX_V2)) {
+		fprintf(stderr, "%s: metadata format (flags=%u) is not supported by this version; rebuild the database with updatedb\n",
+		        filename, hdr.metadata_flags);
 		close(fd);
 		return false;
 	}
@@ -330,7 +283,8 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	const char *meta_end = meta_ptr + metadata_stream.size();
 	while (meta_ptr < meta_end) {
 		FileMetadata meta;
-		if (!decode_metadata(meta_ptr, meta_end, meta)) {
+		if (!decode_metadata_record(&meta_ptr, meta_end, &meta)) {
+			fprintf(stderr, "%s: metadata stream is truncated after %zu entries\n", filename, snapshot->metadata.size());
 			break;
 		}
 		if (meta.hash.kind != MetadataHashKind::None && snapshot->hash_kind == MetadataHashKind::None) {
@@ -418,40 +372,6 @@ bool load_snapshot(const char *filename, Snapshot *snapshot)
 	return true;
 }
 
-vector<HistoryEvent> parse_history(const string &data)
-{
-	vector<HistoryEvent> events;
-	const char *ptr = data.data();
-	const char *end = ptr + data.size();
-	while (ptr < end) {
-		if (static_cast<size_t>(end - ptr) < 1 + sizeof(int64_t) + sizeof(int32_t) + sizeof(uint32_t)) {
-			break;
-		}
-		HistoryEvent event;
-		event.kind = static_cast<HistoryEventKind>(*ptr++);
-		memcpy(&event.event_time.sec, ptr, sizeof(event.event_time.sec));
-		ptr += sizeof(event.event_time.sec);
-		memcpy(&event.event_time.nsec, ptr, sizeof(event.event_time.nsec));
-		ptr += sizeof(event.event_time.nsec);
-		uint32_t path_len;
-		memcpy(&path_len, ptr, sizeof(path_len));
-		ptr += sizeof(path_len);
-		if (static_cast<size_t>(end - ptr) < path_len) {
-			break;
-		}
-		event.path.assign(ptr, path_len);
-		ptr += path_len;
-		if (!decode_metadata(ptr, end, event.old_metadata)) {
-			break;
-		}
-		if (!decode_metadata(ptr, end, event.new_metadata)) {
-			break;
-		}
-		events.push_back(move(event));
-	}
-	return events;
-}
-
 bool load_history_events(const char *filename, vector<HistoryEvent> *events)
 {
 	int fd = open(filename, O_RDONLY);
@@ -471,12 +391,18 @@ bool load_history_events(const char *filename, vector<HistoryEvent> *events)
 		close(fd);
 		return false;
 	}
+	if (!(hdr.metadata_flags & METADATA_FLAG_POSIX_V2)) {
+		fprintf(stderr, "%s: metadata format (flags=%u) is not supported by this version; rebuild the database with updatedb\n",
+		        filename, hdr.metadata_flags);
+		close(fd);
+		return false;
+	}
 
 	vector<char> history_blob = read_blob(fd, hdr.history_offset_bytes, hdr.history_length_bytes);
 	close(fd);
 
 	string decompressed = decompress_stream(history_blob);
-	*events = parse_history(decompressed);
+	*events = decode_history_stream(decompressed);
 	return true;
 }
 
