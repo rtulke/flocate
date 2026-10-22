@@ -62,9 +62,12 @@ flocate-updatedb
 HIST=$(flocate-showdiff --history /var/lib/flocate/flocate.db)
 grep -q '^\[MODIFIED\] /srv/smoke/a\.txt' <<<"$HIST"
 grep -q '^\[ADDED\] /srv/smoke/b\.txt' <<<"$HIST"
-# Only the two touched files may show up; everything else was unchanged.
-[ "$(grep -c '^\[MODIFIED\]' <<<"$HIST")" = 1 ]
-[ "$(grep -c '^\[ADDED\]' <<<"$HIST")" = 1 ]
+# Within the test tree only the two touched files may show up (useradd and
+# the database write legitimately change /etc, /home and /var/lib/flocate),
+# and no file may have lost its previous metadata between the runs.
+[ "$(grep -c '^\[MODIFIED\] /srv/smoke/' <<<"$HIST")" = 1 ]
+[ "$(grep -c '^\[ADDED\] /srv/smoke/' <<<"$HIST")" = 1 ]
+! grep -q 'metadata-gained' <<<"$HIST"
 grep -q '"path":"/srv/smoke/b.txt"' <<<"$(flocate-showdiff --json --history /var/lib/flocate/flocate.db)"
 
 # Live diff against the running system.
