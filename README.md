@@ -64,7 +64,8 @@ packaging/test-install.sh       # install and smoke-test each package in a fresh
 
 A plain `dpkg-buildpackage -us -uc -b` in the checkout works too. The version
 comes from `meson.build` and must match `debian/changelog`; builds that are not
-on the matching `v<version>` tag get a `+git<commit-timestamp>.<commit>` suffix (UTC, to the second, so later commits always sort as newer). The GitHub
+on the matching `v<version>` tag get a `+git<commit-timestamp>.<commit>` suffix
+(UTC, to the second, so later commits always sort as newer). The GitHub
 workflow `packages.yml` builds and smoke-tests all packages on every push and
 publishes them to the Releases page; `tests.yml` runs the test suite.
 

@@ -69,7 +69,8 @@ packaging/test-install.sh       # jedes Paket in einem frischen Container instal
 Ein einfaches `dpkg-buildpackage -us -uc -b` im Checkout funktioniert ebenfalls.
 Die Version stammt aus `meson.build` und muss zu `debian/changelog` passen;
 Builds, die nicht auf dem passenden Tag `v<version>` stehen, erhalten den
-Zusatz `+git<commit-zeitstempel>.<commit>` (UTC, sekundengenau, damit spätere Commits immer als neuer gelten). Der GitHub-Workflow `packages.yml` baut und
+Zusatz `+git<commit-zeitstempel>.<commit>` (UTC, sekundengenau, damit spätere
+Commits immer als neuer gelten). Der GitHub-Workflow `packages.yml` baut und
 testet alle Pakete bei jedem Push und veröffentlicht sie auf der Releases-Seite;
 `tests.yml` führt die Testsuite aus.
 
