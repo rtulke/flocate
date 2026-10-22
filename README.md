@@ -35,6 +35,39 @@ database with a live file system tree such as a mounted image or backup.
 - groff man pages for `flocate(1)`, `updatedb(8)`, `updatedb.conf(5)`,
   `flocate-build(8)` and `flocate-showdiff(1)`, and an end-to-end test suite.
 
+## Installing from packages
+
+Prebuilt `.deb` packages for Debian 12/13 and Ubuntu 24.04/26.04, each for
+amd64 and arm64, are attached to every
+[release](https://github.com/rtulke/flocate/releases); `latest` is a rolling
+build of `main`. Take the one for your distribution and architecture:
+
+```sh
+sudo apt install ./flocate_*_<debian12|debian13|ubuntu2404|ubuntu2604>_<amd64|arm64>.deb
+```
+
+The package replaces locate, mlocate and plocate (apt removes them), creates
+the `flocate` group, makes `/usr/bin/flocate` setgid, registers `locate` and
+`updatedb` through the alternatives system (the binary itself is
+`/usr/sbin/flocate-updatedb`), installs `/etc/updatedb.conf` with the usual
+pruning defaults and enables the daily `flocate-updatedb.timer`, which also
+runs once right after installation. `sudo apt purge flocate` removes the
+database as well.
+
+Building the packages yourself:
+
+```sh
+packaging/build-deb-native.sh   # on a Debian/Ubuntu host -> dist/flocate_<version>_<distro>_<arch>.deb
+packaging/build-deb.sh          # all four targets, each in its own Docker/Podman container
+packaging/test-install.sh       # install and smoke-test each package in a fresh container
+```
+
+A plain `dpkg-buildpackage -us -uc -b` in the checkout works too. The version
+comes from `meson.build` and must match `debian/changelog`; builds that are not
+on the matching `v<version>` tag get a `+git<date>.<commit>` suffix. The GitHub
+workflow `packages.yml` builds and smoke-tests all packages on every push and
+publishes them to the Releases page; `tests.yml` runs the test suite.
+
 ## Building and installing
 
 Dependencies: a C++17 compiler, Meson ≥ 0.61, Ninja, libzstd and optionally
@@ -46,8 +79,9 @@ Debian/Ubuntu and derivatives:
 sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev git
 ```
 
-Make sure no other `locate` implementation (locate, mlocate, plocate) is
-installed; see [Troubleshooting](#troubleshooting).
+When building from source, make sure no other `locate` implementation (locate,
+mlocate, plocate) is installed; see [Troubleshooting](#troubleshooting). The
+`.deb` package takes care of this itself.
 
 ```sh
 sudo dpkg -l '*locate*'
@@ -294,8 +328,9 @@ ls -la /usr/bin/updatedb /etc/alternatives/updatedb /usr/sbin/updatedb.plocate
 ```
 
 If `/usr/bin/locate` and `/usr/bin/updatedb` point through `/etc/alternatives`
-to plocate, the distribution's tools shadow flocate, which installs to
-`/usr/local/bin` and `/usr/local/sbin`. Either remove the other package
+to plocate, the distribution's tools shadow a source-built flocate, which
+installs to `/usr/local/bin` and `/usr/local/sbin` (the `.deb` package conflicts
+with those packages and cannot be shadowed). Either remove the other package
 
 ```sh
 sudo apt remove locate      # or plocate, mlocate

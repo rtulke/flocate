@@ -38,6 +38,41 @@ Backup).
 - groff-Manpages für `flocate(1)`, `updatedb(8)`, `updatedb.conf(5)`,
   `flocate-build(8)` und `flocate-showdiff(1)` sowie eine End-to-End-Testsuite.
 
+## Installation aus Paketen
+
+Fertige `.deb`-Pakete für Debian 12/13 und Ubuntu 24.04/26.04, jeweils für
+amd64 und arm64, hängen an jedem
+[Release](https://github.com/rtulke/flocate/releases); `latest` ist ein
+laufend aktualisierter Build von `main`. Das Paket für die eigene Distribution
+und Architektur installieren:
+
+```sh
+sudo apt install ./flocate_*_<debian12|debian13|ubuntu2404|ubuntu2604>_<amd64|arm64>.deb
+```
+
+Das Paket ersetzt locate, mlocate und plocate (apt entfernt sie), legt die
+Gruppe `flocate` an, setzt das setgid-Bit auf `/usr/bin/flocate`, registriert
+`locate` und `updatedb` über das Alternatives-System (das Programm selbst heißt
+`/usr/sbin/flocate-updatedb`), installiert `/etc/updatedb.conf` mit den
+üblichen Pruning-Vorgaben und aktiviert den täglichen `flocate-updatedb.timer`,
+der direkt nach der Installation auch einmal läuft. `sudo apt purge flocate`
+entfernt auch die Datenbank.
+
+Pakete selbst bauen:
+
+```sh
+packaging/build-deb-native.sh   # auf einem Debian/Ubuntu-System -> dist/flocate_<version>_<distro>_<arch>.deb
+packaging/build-deb.sh          # alle vier Ziele, jedes in seinem eigenen Docker/Podman-Container
+packaging/test-install.sh       # jedes Paket in einem frischen Container installieren und testen
+```
+
+Ein einfaches `dpkg-buildpackage -us -uc -b` im Checkout funktioniert ebenfalls.
+Die Version stammt aus `meson.build` und muss zu `debian/changelog` passen;
+Builds, die nicht auf dem passenden Tag `v<version>` stehen, erhalten den
+Zusatz `+git<datum>.<commit>`. Der GitHub-Workflow `packages.yml` baut und
+testet alle Pakete bei jedem Push und veröffentlicht sie auf der Releases-Seite;
+`tests.yml` führt die Testsuite aus.
+
 ## Bauen und installieren
 
 Abhängigkeiten: C++17-Compiler, Meson ≥ 0.61, Ninja, libzstd, optional
@@ -49,8 +84,9 @@ Debian/Ubuntu und Derivate:
 sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev git
 ```
 
-Es darf keine andere `locate`-Implementierung (locate, mlocate, plocate)
-installiert sein; siehe [Fehlerbehebung](#fehlerbehebung).
+Beim Bauen aus den Quellen darf keine andere `locate`-Implementierung (locate,
+mlocate, plocate) installiert sein; siehe [Fehlerbehebung](#fehlerbehebung).
+Das `.deb`-Paket kümmert sich selbst darum.
 
 ```sh
 sudo dpkg -l '*locate*'
@@ -301,9 +337,10 @@ ls -la /usr/bin/updatedb /etc/alternatives/updatedb /usr/sbin/updatedb.plocate
 ```
 
 Zeigen `/usr/bin/locate` und `/usr/bin/updatedb` über `/etc/alternatives` auf
-plocate, überdecken die Distributionswerkzeuge flocate, das nach
-`/usr/local/bin` und `/usr/local/sbin` installiert wird. Entweder das andere
-Paket entfernen
+plocate, überdecken die Distributionswerkzeuge ein aus den Quellen gebautes
+flocate, das nach `/usr/local/bin` und `/usr/local/sbin` installiert wird (das
+`.deb`-Paket kollidiert mit diesen Paketen und kann nicht überdeckt werden).
+Entweder das andere Paket entfernen
 
 ```sh
 sudo apt remove locate      # oder plocate, mlocate

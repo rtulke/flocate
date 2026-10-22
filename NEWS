@@ -1,5 +1,13 @@
 flocate 1.2.1, unreleased
 
+  - Debian packaging (debian/): the package replaces locate, mlocate and
+    plocate, registers locate and updatedb through the alternatives system,
+    ships /etc/updatedb.conf and the daily timer. packaging/build-deb.sh
+    builds it for Debian 12/13 and Ubuntu 24.04/26.04 in containers,
+    packaging/test-install.sh installs and smoke-tests each one, and the
+    GitHub workflows do the same on every push and publish the packages to
+    the Releases page.
+
   - Fix updatedb dropping every unchanged directory (and its subtree)
     from the database on the second and later runs.
 

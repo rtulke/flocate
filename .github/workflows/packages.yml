@@ -1,0 +1,150 @@
+name: Packages
+
+# One .deb per target distro and architecture, built natively inside that
+# distro's own container (the package then declares that distro's glibc,
+# libzstd and liburing versions) and installed into a fresh container of the
+# same distro by packaging/smoke-test.sh. build and verify run on every push
+# and pull request; the release job publishes the packages for "vX.Y.Z" tags
+# and keeps a rolling "latest" prerelease for main.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      # id x arch is the matrix; the include entries attach the image to
+      # each id and the runner to each arch.
+      matrix:
+        id: [debian12, debian13, ubuntu2404, ubuntu2604]
+        arch: [amd64, arm64]
+        include:
+          - { id: debian12,   image: debian:12-slim }
+          - { id: debian13,   image: debian:13-slim }
+          - { id: ubuntu2404, image: ubuntu:24.04 }
+          - { id: ubuntu2604, image: ubuntu:26.04 }
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    steps:
+      # actions/checkout needs git, which the bare distro images lack.
+      - name: Install git
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates >/dev/null
+
+      - uses: actions/checkout@v7
+        with:
+          # Tags decide whether this is a release build or a snapshot.
+          fetch-depth: 0
+
+      # Installs the build dependencies from debian/control, runs
+      # dpkg-buildpackage (including the test suite) and lintian, and
+      # names the result after the distro it was built on.
+      - name: Build the package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          INSTALL_DEPS=1 packaging/build-deb-native.sh
+
+      - name: Check the package name matches the matrix entry
+        run: ls dist/flocate_*_${{ matrix.id }}_${{ matrix.arch }}.deb
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-${{ matrix.id }}-${{ matrix.arch }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+  verify:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        id: [debian12, debian13, ubuntu2404, ubuntu2604]
+        arch: [amd64, arm64]
+        include:
+          - { id: debian12,   image: debian:12-slim }
+          - { id: debian13,   image: debian:13-slim }
+          - { id: ubuntu2404, image: ubuntu:24.04 }
+          - { id: ubuntu2604, image: ubuntu:26.04 }
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: deb-${{ matrix.id }}-${{ matrix.arch }}
+          path: dist
+
+      # A real apt-get install in a fresh container of the target distro, so
+      # the declared dependencies have to resolve there, followed by the
+      # functional checks in packaging/smoke-test.sh.
+      - name: Install and smoke-test the package
+        run: |
+          docker run --rm -v "$PWD:/work:ro" ${{ matrix.image }} \
+            bash -c 'bash /work/packaging/smoke-test.sh /work/dist/flocate_*.deb'
+
+  release:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Determine release identity
+        id: rel
+        run: |
+          PKGS="one .deb per Debian (12, 13) and Ubuntu (24.04, 26.04) release, each for amd64 and arm64; see SHA256SUMS"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "title=flocate $GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+            echo "notes=flocate $GITHUB_REF_NAME: $PKGS. Changes are listed in NEWS." >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "title=flocate (main, rolling build)" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "notes=Rolling build of main@${GITHUB_SHA::7}, not a stable release: $PKGS." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write checksums
+        run: cd artifacts && sha256sum *.deb > SHA256SUMS
+
+      # "latest" is a moving target: the previous release and tag are
+      # deleted first so the tag follows main. Tagged releases are only ever
+      # re-uploaded (--clobber) when a run is repeated.
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd artifacts
+          TAG="${{ steps.rel.outputs.tag }}"
+          PRERELEASE_FLAG=""
+          [[ "${{ steps.rel.outputs.prerelease }}" == "true" ]] && PRERELEASE_FLAG="--prerelease"
+          if [[ "$TAG" == "latest" ]]; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          fi
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ steps.rel.outputs.title }}" \
+            --notes "${{ steps.rel.outputs.notes }}" \
+            --latest=${{ steps.rel.outputs.latest }} \
+            $PRERELEASE_FLAG \
+            * \
+          || { gh release upload "$TAG" * --repo "$GITHUB_REPOSITORY" --clobber \
+               && gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest=${{ steps.rel.outputs.latest }}; }
