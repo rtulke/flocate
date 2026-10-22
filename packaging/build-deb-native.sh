@@ -68,7 +68,10 @@ if command -v lintian >/dev/null 2>&1; then
     lintian --fail-on error "$BUILD_ROOT"/flocate_*.changes
 fi
 
+# The file name uses the meson spelling of the version (1.2.1-dev, not
+# 1.2.1~dev): GitHub rewrites "~" in release asset names, which would make
+# the published names differ from SHA256SUMS. dpkg does not care about it.
 mkdir -p "$REPO/dist"
-OUT="$REPO/dist/flocate_${DEB_VERSION}${SNAPSHOT}_${DISTRO_ID}_${ARCH}.deb"
+OUT="$REPO/dist/flocate_${VERSION}${SNAPSHOT}_${DISTRO_ID}_${ARCH}.deb"
 cp "$BUILD_ROOT"/flocate_*.deb "$OUT"
 echo "-> $OUT"

@@ -19,6 +19,14 @@ if [ "$1" = "configure" ]; then
         --slave /usr/share/man/man1/locate.1.gz locate.1.gz /usr/share/man/man1/flocate.1.gz \
         --slave /usr/bin/updatedb updatedb /usr/sbin/flocate-updatedb \
         --slave /usr/share/man/man8/updatedb.8.gz updatedb.8.gz /usr/share/man/man8/flocate-updatedb.8.gz
+
+    # Build the first database right away instead of waiting for the timer.
+    # deb-systemd-invoke skips the service because it has no [Install]
+    # section, so start it here; --no-block keeps the package install from
+    # waiting for the scan.
+    if [ -z "$2" ] && [ -d /run/systemd/system ]; then
+        systemctl start --no-block flocate-updatedb.service >/dev/null 2>&1 || true
+    fi
 fi
 
 #DEBHELPER#
