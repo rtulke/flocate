@@ -73,6 +73,8 @@ bool use_debug = false;
 MetadataHashKind conf_metadata_hash_kind = MetadataHashKind::None;
 int conf_history_depth = 1;
 bool conf_compare_atime = false;
+uint64_t conf_hash_max_size = 0;
+bool conf_rehash_all = false;
 
 /* Parse a STR, store the parsed boolean value to DEST;
    return 0 if OK, -1 on error. */
@@ -88,6 +90,48 @@ parse_bool(bool *dest, const char *str)
 		return 0;
 	}
 	return -1;
+}
+
+/* Parse a byte count with an optional K, M, G or T suffix (powers of 1024);
+   return true if OK. */
+static bool parse_size(uint64_t *dest, const char *str)
+{
+	if (*str == '\0' || *str == '-')
+		return false;
+	char *end;
+	errno = 0;
+	unsigned long long value = strtoull(str, &end, 10);
+	if (errno != 0 || end == str)
+		return false;
+	unsigned shift = 0;
+	switch (toupper((unsigned char)*end)) {
+	case '\0':
+		break;
+	case 'K':
+		shift = 10;
+		++end;
+		break;
+	case 'M':
+		shift = 20;
+		++end;
+		break;
+	case 'G':
+		shift = 30;
+		++end;
+		break;
+	case 'T':
+		shift = 40;
+		++end;
+		break;
+	default:
+		return false;
+	}
+	if (*end != '\0')
+		return false;
+	if (shift != 0 && value > (~0ULL >> shift))
+		return false;
+	*dest = value << shift;
+	return true;
 }
 
 static bool parse_metadata_hash_kind(MetadataHashKind *dest, const std::string &value)
@@ -180,7 +224,8 @@ enum {
 	UCT_PRUNEPATHS,
 	UCT_METADATA_HASH,
 	UCT_HISTORY_DEPTH,
-	UCT_COMPARE_ATIME
+	UCT_COMPARE_ATIME,
+	UCT_HASH_MAX_SIZE
 };
 
 /* Return next token from uc_file; for UCT_IDENTIFIER, UCT_QUOTED or keywords,
@@ -246,6 +291,8 @@ uc_lex(void)
 			return UCT_HISTORY_DEPTH;
 		if (uc_lex_buf == "COMPARE_ATIME")
 			return UCT_COMPARE_ATIME;
+		if (uc_lex_buf == "HASH_MAX_SIZE")
+			return UCT_HASH_MAX_SIZE;
 		return UCT_IDENTIFIER;
 	}
 	}
@@ -255,7 +302,7 @@ uc_lex(void)
 static void
 parse_updatedb_conf(void)
 {
-	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash, had_history_depth, had_compare_atime;
+	bool had_prune_bind_mounts, had_prunefs, had_prunenames, had_prunepaths, had_metadata_hash, had_history_depth, had_compare_atime, had_hash_max_size;
 
 	uc_file = fopen(UPDATEDB_CONF, "r");
 	if (uc_file == NULL) {
@@ -274,6 +321,7 @@ parse_updatedb_conf(void)
 	had_metadata_hash = false;
 	had_history_depth = false;
 	had_compare_atime = false;
+	had_hash_max_size = false;
 	for (;;) {
 		bool *had_var;
 		int var_token, token;
@@ -312,6 +360,10 @@ parse_updatedb_conf(void)
 
 		case UCT_COMPARE_ATIME:
 			had_var = &had_compare_atime;
+			break;
+
+		case UCT_HASH_MAX_SIZE:
+			had_var = &had_hash_max_size;
 			break;
 
 		case UCT_IDENTIFIER:
@@ -374,6 +426,12 @@ parse_updatedb_conf(void)
 				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 				exit(EXIT_FAILURE);
 			}
+		} else if (var_token == UCT_HASH_MAX_SIZE) {
+			if (!parse_size(&conf_hash_max_size, uc_lex_buf.c_str())) {
+				fprintf(stderr, "%s:%u: invalid value `%s' of HASH_MAX_SIZE\n",
+				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+				exit(EXIT_FAILURE);
+			}
 		} else
 			abort();
 		token = uc_lex();
@@ -423,6 +481,10 @@ help(void)
          "      --history-depth N          keep metadata history for N runs\n"
          "      --compare-atime FLAG       record atime-only changes as\n"
          "                                 modifications (default \"no\")\n"
+         "      --hash-max-size SIZE       do not hash files larger than SIZE\n"
+         "                                 (suffix K/M/G/T; default 0 = no limit)\n"
+         "      --rehash-all               re-hash files even if size, mtime and\n"
+         "                                 ctime are unchanged\n"
 	         "      --prune-bind-mounts FLAG   omit bind mounts (default "
 	         "\"no\")\n"
 	         "      --prunefs FS               filesystems to omit from "
@@ -473,7 +535,9 @@ parse_arguments(int argc, char *argv[])
 	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2,
 	       OPT_METADATA_HASH = CHAR_MAX + 3,
 	       OPT_HISTORY_DEPTH = CHAR_MAX + 4,
-	       OPT_COMPARE_ATIME = CHAR_MAX + 5 };
+	       OPT_COMPARE_ATIME = CHAR_MAX + 5,
+	       OPT_HASH_MAX_SIZE = CHAR_MAX + 6,
+	       OPT_REHASH_ALL = CHAR_MAX + 7 };
 
 	static const struct option options[] = {
 		{ "add-prunefs", required_argument, NULL, 'f' },
@@ -492,6 +556,8 @@ parse_arguments(int argc, char *argv[])
 		{ "metadata-hash", required_argument, NULL, OPT_METADATA_HASH },
 		{ "history-depth", required_argument, NULL, OPT_HISTORY_DEPTH },
 		{ "compare-atime", required_argument, NULL, OPT_COMPARE_ATIME },
+		{ "hash-max-size", required_argument, NULL, OPT_HASH_MAX_SIZE },
+		{ "rehash-all", no_argument, NULL, OPT_REHASH_ALL },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "version", no_argument, NULL, 'V' },
 		{ "block-size", required_argument, 0, 'b' },
@@ -618,6 +684,16 @@ parse_arguments(int argc, char *argv[])
 				        program_invocation_name, optarg, "compare-atime");
 				exit(EXIT_FAILURE);
 			}
+			break;
+		case OPT_HASH_MAX_SIZE:
+			if (!parse_size(&conf_hash_max_size, optarg)) {
+				fprintf(stderr, "%s: invalid value `%s' of --%s\n",
+				        program_invocation_name, optarg, "hash-max-size");
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case OPT_REHASH_ALL:
+			conf_rehash_all = true;
 			break;
 
 		case 'f':

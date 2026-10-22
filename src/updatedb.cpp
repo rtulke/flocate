@@ -55,6 +55,7 @@ any later version.
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/vfs.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -164,6 +165,7 @@ struct entry {
 	FileMetadata previous_metadata;
 	bool existed_before = false;
 	bool matched_in_new_scan = false;
+	bool hash_allowed = true;  // For directories only: whether files below may be hashed.
 };
 
 bool filesystem_is_excluded(const string &path)
@@ -200,6 +202,52 @@ bool filesystem_is_excluded(const string &path)
 	}
 	endmntent(f);
 	return false;
+}
+
+// Pseudo filesystems whose "files" are kernel interfaces, not data: reading them
+// can block, return endless output or (for /proc/kcore) be terabytes in size.
+// Hashing is never attempted below a mount point of one of these types, even if
+// PRUNEFS does not list it. Values from linux/magic.h, spelled out because
+// older headers lack some of them.
+bool hash_allowed_on_fs(int dirfd, const string &path)
+{
+	static const uint64_t denied_fs_magic[] = {
+		0x9fa0,  // proc
+		0x62656572,  // sysfs
+		0x64626720,  // debugfs
+		0x74726163,  // tracefs
+		0x73636673,  // securityfs
+		0x27e0eb,  // cgroup
+		0x63677270,  // cgroup2
+		0x1cd1,  // devpts
+		0x6165676c,  // pstore
+		0xde5e81e4,  // efivarfs
+		0x62656570,  // configfs
+		0x65735543,  // fusectl
+		0xcafe4a11,  // bpf
+		0x42494e4d,  // binfmt_misc
+		0x19800202,  // mqueue
+		0x958458f6,  // hugetlbfs
+		0x67596969,  // rpc_pipefs
+		0x6e736673,  // nsfs
+		0xf97cff8c,  // selinuxfs
+		0x43415d53,  // smackfs
+		0x0187,  // autofs
+	};
+	struct statfs sfs;
+	if (fstatfs(dirfd, &sfs) != 0) {
+		return true;
+	}
+	const uint64_t magic = static_cast<uint64_t>(static_cast<unsigned long>(sfs.f_type));
+	for (uint64_t denied : denied_fs_magic) {
+		if (magic == denied) {
+			if (conf_debug_pruning) {
+				fprintf(stderr, "Not hashing below `%s': pseudo filesystem (magic 0x%" PRIx64 ")\n", path.c_str(), magic);
+			}
+			return false;
+		}
+	}
+	return true;
 }
 
 dir_time get_dirtime_from_stat(const struct stat &buf)
@@ -805,7 +853,7 @@ vector<HistoryEvent> ExistingDB::read_history_events() const
 // “parent_dev” must be the device of the parent directory of “path”.
 //
 // Takes ownership of fd.
-int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder, vector<HistoryEvent> *history_events)
+int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, bool hash_allowed, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder, vector<HistoryEvent> *history_events)
 {
 	if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, path)) {
 		if (conf_debug_pruning) {
@@ -968,11 +1016,28 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		}
 
 		if (conf_metadata_hash_kind != MetadataHashKind::None && S_ISREG(sb.st_mode)) {
-			if (!compute_file_hash_at(parent_fd, e.name, conf_metadata_hash_kind, &e.metadata.hash)) {
-				if (conf_verbose) {
-					perror((path_plus_slash + e.name).c_str());
+			// Reading every regular file on every run is what makes hashing
+			// expensive, so reuse the previous digest when nothing that a content
+			// change would touch (size, mtime, ctime) has moved. ctime cannot be
+			// set from userspace, so a forged mtime alone does not hide a change.
+			const FileMetadata &prev = e.previous_metadata;
+			const bool reuse_previous_hash = !conf_rehash_all && prev.enabled &&
+				prev.hash.kind == conf_metadata_hash_kind && prev.hash.length != 0 &&
+				prev.size == e.metadata.size &&
+				dir_time_equals(prev.mtime, e.metadata.mtime) &&
+				dir_time_equals(prev.ctime, e.metadata.ctime);
+			const bool too_large = conf_hash_max_size != 0 && static_cast<uint64_t>(sb.st_size) > conf_hash_max_size;
+			if (reuse_previous_hash) {
+				e.metadata.hash = prev.hash;
+			} else if (hash_allowed && !too_large) {
+				if (!compute_file_hash_at(parent_fd, e.name, conf_metadata_hash_kind, &e.metadata.hash)) {
+					if (conf_verbose) {
+						perror((path_plus_slash + e.name).c_str());
+					}
+					e.metadata.hash = MetadataHash{};
 				}
-				e.metadata.hash = MetadataHash{};
+			} else if (conf_debug_pruning && too_large) {
+				fprintf(stderr, "Not hashing `%s': larger than HASH_MAX_SIZE\n", (path_plus_slash + e.name).c_str());
 			}
 		}
 
@@ -1043,13 +1108,16 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			exit(1);
 		}
 
-		e.metadata = metadata_from_stat(buf);
 		e.dev = buf.st_dev;
+		e.hash_allowed = hash_allowed;
 		if (buf.st_dev != parent_dev) {
 			if (filesystem_is_excluded(path_plus_slash + e.name)) {
 				close(e.fd);
 				e.fd = -1;
 				continue;
+			}
+			if (hash_allowed && conf_metadata_hash_kind != MetadataHashKind::None) {
+				e.hash_allowed = hash_allowed_on_fs(e.fd, path_plus_slash + e.name);
 			}
 		}
 
@@ -1075,7 +1143,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 	// Now scan subdirectories.
 	for (const entry &e : entries) {
 		if (e.is_directory && e.fd != -1) {
-			int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, existing_db, corpus, dict_builder, history_events);
+			int ret = scan(path_plus_slash + e.name, e.fd, e.dev, e.dt, e.db_modified, e.hash_allowed, existing_db, corpus, dict_builder, history_events);
 			if (ret == -1) {
 				// TODO: The unscanned file descriptors will leak, but it doesn't really matter,
 				// as we're about to exit.
@@ -1153,14 +1221,26 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	// Without a usable previous database every entry would show up as ADDED,
+	// which says nothing and costs memory proportional to the file count. Such
+	// a run only records a marker; the database itself is the baseline.
+	const bool baseline_run = existing_db.get_error();
+	if (baseline_run && conf_verbose) {
+		fprintf(stderr, "No usable previous database; performing a full scan and recording it as baseline.\n");
+	}
+
 	vector<HistoryEvent> history_events;
-	vector<HistoryEvent> *history_sink = (conf_history_depth == 0) ? nullptr : &history_events;
-	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, &existing_db, corpus, &dict_builder, history_sink);
+	vector<HistoryEvent> *history_sink = (conf_history_depth == 0 || baseline_run) ? nullptr : &history_events;
+	const bool root_hash_allowed = conf_metadata_hash_kind == MetadataHashKind::None || hash_allowed_on_fs(root_fd, conf_scan_root);
+	scan(conf_scan_root, root_fd, buf.st_dev, get_dirtime_from_stat(buf), /*db_modified=*/unknown_dir_time, root_hash_allowed, &existing_db, corpus, &dict_builder, history_sink);
 
 	if (conf_history_depth > 0) {
 		HistoryEvent marker;
 		marker.kind = HistoryEventKind::RunMarker;
 		marker.event_time = current_realtime();
+		if (baseline_run) {
+			marker.path = "baseline";
+		}
 		history_events.insert(history_events.begin(), marker);
 		if (conf_history_depth > 1) {
 			vector<HistoryEvent> previous = existing_db.read_history_events();

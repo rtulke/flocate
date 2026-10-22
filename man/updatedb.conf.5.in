@@ -110,6 +110,12 @@ history log. The default is \fBno\fR; see the \fB\-\-compare\-atime\fR option in
 .BR updatedb (8).
 
 .TP
+\fBHASH_MAX_SIZE\fR
+Regular files larger than this many bytes are not hashed. The suffixes
+\fBK\fR, \fBM\fR, \fBG\fR and \fBT\fR are accepted. The default is \fB0\fR
+(no limit).
+
+.TP
 \fBPRUNE_BIND_MOUNTS\fR
 One of the strings \fB0\fR, \fBno\fR, \fB1\fR or \fByes\fR.
 If

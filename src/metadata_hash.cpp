@@ -4,7 +4,9 @@
 #include <errno.h>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -369,9 +371,19 @@ bool compute_file_hash_at(int dirfd, const std::string &name, MetadataHashKind k
 	if (fd == -1) {
 		return false;
 	}
-	uint8_t buf[1 << 15];
+	// The caller decided to hash based on an earlier lstat(); make sure we did not
+	// end up with something else (a FIFO would block forever on read()).
+	struct stat sb;
+	if (fstat(fd, &sb) != 0 || !S_ISREG(sb.st_mode)) {
+		close(fd);
+		errno = EINVAL;
+		return false;
+	}
+	posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+
+	static std::vector<uint8_t> buf(1 << 20);
 	while (true) {
-		ssize_t ret = read(fd, buf, sizeof(buf));
+		ssize_t ret = read(fd, buf.data(), buf.size());
 		if (ret == 0) {
 			break;
 		} else if (ret < 0) {
@@ -380,7 +392,7 @@ bool compute_file_hash_at(int dirfd, const std::string &name, MetadataHashKind k
 			errno = saved_errno;
 			return false;
 		}
-		builder.update(buf, static_cast<size_t>(ret));
+		builder.update(buf.data(), static_cast<size_t>(ret));
 	}
 	if (close(fd) != 0) {
 		return false;

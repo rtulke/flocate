@@ -26,6 +26,7 @@ any later version.
 #include "metadata.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,13 @@ extern MetadataHashKind conf_metadata_hash_kind;
 extern int conf_history_depth;
 /* true if atime changes alone should count as a modification */
 extern bool conf_compare_atime;
+
+/* Regular files larger than this many bytes are not hashed; 0 means no limit */
+extern uint64_t conf_hash_max_size;
+
+/* true if every regular file should be re-hashed even when size, mtime and
+   ctime are unchanged since the previous run */
+extern bool conf_rehash_all;
 
 /* Parse /etc/updatedb.conf and command-line arguments ARGC, ARGV.
    Exit on error or --help, --version. */

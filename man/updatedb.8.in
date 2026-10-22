@@ -141,6 +141,21 @@ and would make every file appear modified on every run. The atime is always
 stored in the database regardless of this setting.
 
 .TP
+\fB\-\-hash\-max\-size\fR \fISIZE\fR
+Do not hash regular files larger than \fISIZE\fR bytes. \fISIZE\fR accepts the
+suffixes \fBK\fR, \fBM\fR, \fBG\fR and \fBT\fR (powers of 1024). The default
+is \fB0\fR, meaning no limit. Such files keep their other metadata but carry no
+hash.
+
+.TP
+\fB\-\-rehash\-all\fR
+Re-read and hash every regular file. By default a file's previous hash is reused
+when its size, mtime and ctime are unchanged since the last run, which makes
+regular runs cheap; use this option after changing the algorithm or when a
+complete re-verification is wanted. Files below pseudo filesystems such as
+\fBproc\fR, \fBsysfs\fR or \fBdebugfs\fR are never hashed.
+
+.TP
 \fB\-l\fR, \fB\-\-require\-visibility\fR \fIFLAG\fR
 Set the \*(lqrequire file visibility before reporting it\*(rq flag in the
 generated database to \fIFLAG\fR.
