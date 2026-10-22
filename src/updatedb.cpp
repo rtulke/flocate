@@ -55,7 +55,6 @@ any later version.
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <sys/vfs.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -204,50 +203,18 @@ bool filesystem_is_excluded(const string &path)
 	return false;
 }
 
-// Pseudo filesystems whose "files" are kernel interfaces, not data: reading them
-// can block, return endless output or (for /proc/kcore) be terabytes in size.
-// Hashing is never attempted below a mount point of one of these types, even if
-// PRUNEFS does not list it. Values from linux/magic.h, spelled out because
-// older headers lack some of them.
+// Hashing is never attempted below a mount point of a pseudo filesystem
+// (proc, sysfs, ...), even if PRUNEFS does not list it; see fs_allows_hashing().
 bool hash_allowed_on_fs(int dirfd, const string &path)
 {
-	static const uint64_t denied_fs_magic[] = {
-		0x9fa0,  // proc
-		0x62656572,  // sysfs
-		0x64626720,  // debugfs
-		0x74726163,  // tracefs
-		0x73636673,  // securityfs
-		0x27e0eb,  // cgroup
-		0x63677270,  // cgroup2
-		0x1cd1,  // devpts
-		0x6165676c,  // pstore
-		0xde5e81e4,  // efivarfs
-		0x62656570,  // configfs
-		0x65735543,  // fusectl
-		0xcafe4a11,  // bpf
-		0x42494e4d,  // binfmt_misc
-		0x19800202,  // mqueue
-		0x958458f6,  // hugetlbfs
-		0x67596969,  // rpc_pipefs
-		0x6e736673,  // nsfs
-		0xf97cff8c,  // selinuxfs
-		0x43415d53,  // smackfs
-		0x0187,  // autofs
-	};
-	struct statfs sfs;
-	if (fstatfs(dirfd, &sfs) != 0) {
+	uint64_t magic = 0;
+	if (fs_allows_hashing(dirfd, &magic)) {
 		return true;
 	}
-	const uint64_t magic = static_cast<uint64_t>(static_cast<unsigned long>(sfs.f_type));
-	for (uint64_t denied : denied_fs_magic) {
-		if (magic == denied) {
-			if (conf_debug_pruning) {
-				fprintf(stderr, "Not hashing below `%s': pseudo filesystem (magic 0x%" PRIx64 ")\n", path.c_str(), magic);
-			}
-			return false;
-		}
+	if (conf_debug_pruning) {
+		fprintf(stderr, "Not hashing below `%s': pseudo filesystem (magic 0x%" PRIx64 ")\n", path.c_str(), magic);
 	}
-	return true;
+	return false;
 }
 
 dir_time get_dirtime_from_stat(const struct stat &buf)
@@ -765,14 +732,14 @@ pair<string, dir_time> ExistingDB::read_next()
 				hdr.directory_data_offset_bytes + hdr.directory_data_length_bytes - compressed_dir_time_pos,
 				sizeof(buf));
 			if (bytes_to_read == 0) {
-				error = true;
+			error = true;
 				return { "", not_a_dir };
 			}
 			if (!try_complete_pread(fd, buf, bytes_to_read, compressed_dir_time_pos)) {
 				if (conf_verbose) {
 					perror("pread(dirtime)");
 				}
-				error = true;
+			error = true;
 				return { "", not_a_dir };
 			}
 			compressed_dir_time_pos += bytes_to_read;

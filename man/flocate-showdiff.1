@@ -33,8 +33,12 @@ by Robert Tulke <rt@debian.sh> since November 2025.
 .B --history
 Print the recorded add/remove/modify events stored alongside
 .I FLOCATE_DB .
-The log is ordered chronologically; run markers are automatically skipped in
-the output.
+The log is ordered chronologically. Each
+.B updatedb
+run is introduced by a line of the form
+.BR "=== run " "DATE" " ===" ;
+a run that had no usable previous database is marked as baseline and carries
+no per-file events.
 
 .TP
 .I OLD_DB NEW_DB
@@ -47,11 +51,21 @@ including the old and/or new attributes.
 .BI --live " ROOT"
 Diff a database against the live filesystem rooted at
 .IR ROOT .
-Every database entry is stat(2)'d, hashes are recomputed when they were present
-in the database, and new files under
+The tree below
 .I ROOT
-are reported as additions. This mode is useful for verifying backups or forensic
-snapshots.
+is walked once, starting at the directory the database was built for (the
+.B \-U
+root of
+.BR updatedb ,
+appended to
+.IR ROOT ).
+Every entry is stat(2)'d, hashes are recomputed when the database contains
+them, entries missing from the database are reported as ADDED and database
+entries missing on disk as REMOVED. PRUNEFS, PRUNENAMES and PRUNEPATHS from the
+configuration block stored in the database are honoured, pseudo filesystems are
+never hashed; bind mounts are not detected in this mode. Use
+.I ROOT
+= / to check the running system, or the mount point of an image or backup.
 
 .TP
 .B --compare-atime
@@ -61,6 +75,17 @@ modification. By default atime is ignored (it changes on every read under
 but it is still printed and listed in the
 .B changed:
 line of MODIFIED events.
+
+.TP
+.B --json
+Print one JSON object per line instead of the human-readable format. Each
+event has the keys
+.BR kind ", " path ", " time ", " old ", " new " and " changed ;
+run markers have
+.BR kind " = " RUN ", " time " and " baseline .
+Timestamps are strings of the form
+.IR seconds.nanoseconds .
+Paths are emitted as byte strings with control characters escaped.
 
 .TP
 .B --help

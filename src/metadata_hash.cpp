@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 #include <vector>
 
@@ -398,5 +399,47 @@ bool compute_file_hash_at(int dirfd, const std::string &name, MetadataHashKind k
 		return false;
 	}
 	*out = builder.finalize();
+	return true;
+}
+
+bool fs_allows_hashing(int dirfd, uint64_t *magic_out)
+{
+	// Values from linux/magic.h, spelled out because older headers lack some of them.
+	static const uint64_t denied_fs_magic[] = {
+		0x9fa0,  // proc
+		0x62656572,  // sysfs
+		0x64626720,  // debugfs
+		0x74726163,  // tracefs
+		0x73636673,  // securityfs
+		0x27e0eb,  // cgroup
+		0x63677270,  // cgroup2
+		0x1cd1,  // devpts
+		0x6165676c,  // pstore
+		0xde5e81e4,  // efivarfs
+		0x62656570,  // configfs
+		0x65735543,  // fusectl
+		0xcafe4a11,  // bpf
+		0x42494e4d,  // binfmt_misc
+		0x19800202,  // mqueue
+		0x958458f6,  // hugetlbfs
+		0x67596969,  // rpc_pipefs
+		0x6e736673,  // nsfs
+		0xf97cff8c,  // selinuxfs
+		0x43415d53,  // smackfs
+		0x0187,  // autofs
+	};
+	struct statfs sfs;
+	if (fstatfs(dirfd, &sfs) != 0) {
+		return true;
+	}
+	const uint64_t magic = static_cast<uint64_t>(static_cast<unsigned long>(sfs.f_type));
+	if (magic_out != nullptr) {
+		*magic_out = magic;
+	}
+	for (uint64_t denied : denied_fs_magic) {
+		if (magic == denied) {
+			return false;
+		}
+	}
 	return true;
 }

@@ -63,4 +63,9 @@ private:
 
 bool compute_file_hash_at(int dirfd, const std::string &name, MetadataHashKind kind, MetadataHash *out);
 
+// False if the filesystem containing DIRFD is a pseudo filesystem (proc, sysfs,
+// debugfs, ...) whose files are kernel interfaces rather than data; hashing is
+// never attempted there. If MAGIC_OUT is non-null it receives the f_type value.
+bool fs_allows_hashing(int dirfd, uint64_t *magic_out);
+
 #endif  // METADATA_HASH_H
