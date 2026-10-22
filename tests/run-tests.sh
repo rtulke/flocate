@@ -186,6 +186,21 @@ DB1=$WORK/d1.db
 upd "$DB1" "$T" --history-depth 1; upd "$DB1" "$T" --history-depth 1; upd "$DB1" "$T" --history-depth 1
 expect_eq "history-depth 1 keeps exactly one run" "1" "$(runs "$DB1")"
 
+section "large tree: the old metadata stream spans several read blocks"
+LT=$WORK/large; mkdir -p "$LT/d1" "$LT/d2" "$LT/d3"
+# Varying sizes and contents, so the metadata records (and hashes) do not
+# compress down to a single read block.
+for i in $(seq 1 7500); do printf '%*s' "$((i % 997))" '' >"$LT/d$((i % 3 + 1))/file$i"; done
+settle
+LDB=$WORK/large.db
+upd "$LDB" "$LT" --metadata-hash xxh64 --history-depth 3
+echo changed >"$LT/d2/file1"; settle   # 1 % 3 + 1 = d2
+LERR=$(upd "$LDB" "$LT" --metadata-hash xxh64 --history-depth 3 -v 2>&1 >/dev/null | grep -c "ended prematurely")
+expect_eq "old metadata stream is read to its end" "0" "$LERR"
+expect_eq "one changed file in a large tree gives one MODIFIED" "1" "$(events "$LDB" MODIFIED)"
+expect_eq "unchanged files in a large tree give no ADDED" "0" "$(events "$LDB" ADDED)"
+expect_eq "large tree is fully indexed" "7500" "$(count "$LDB" file)"
+
 section "configuration change forces a baseline rebuild"
 upd "$DB" "$T" --metadata-hash sha256 --history-depth 3
 expect_contains "switching hash algorithm records a baseline" "baseline" "$(hist "$DB" | tail -1)"

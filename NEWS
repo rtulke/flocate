@@ -15,6 +15,12 @@ flocate 1.2.1, unreleased
     database as missing (inherited from plocate; visible in flocate as
     spurious ADDED history events).
 
+  - Fix updatedb losing the previous metadata of every file once the
+    compressed metadata stream of the old database exceeded a single read
+    block (trees of roughly a few thousand files and more): the next run
+    reported every file as MODIFIED with "metadata-gained" and recomputed
+    all hashes.
+
   - Fix flocate-showdiff losing the last filename of every block, which
     misaligned paths and metadata in snapshot and live mode.
 

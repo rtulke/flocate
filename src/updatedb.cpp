@@ -497,34 +497,45 @@ bool ExistingDB::refill_metadata_block()
 	size_t existing_data = current_metadata_block.size();
 	current_metadata_block.resize(existing_data + 4096);
 
-	ZSTD_outBuffer outbuf;
-	outbuf.dst = current_metadata_block.data() + existing_data;
-	outbuf.size = 4096;
-	outbuf.pos = 0;
-
-	ZSTD_inBuffer inbuf;
-	inbuf.src = compressed_metadata.data();
-	inbuf.size = compressed_metadata.size();
-	inbuf.pos = 0;
-
-	int err = ZSTD_decompressStream(metadata_ctx, &outbuf, &inbuf);
-	if (err < 0) {
-		if (conf_verbose) {
-			fprintf(stderr, "ZSTD_decompressStream(metadata) failed\n");
-		}
+	auto give_up = [&] {
+		current_metadata_block.resize(existing_data);
 		metadata_available = false;
 		return false;
-	}
+	};
 
-	compressed_metadata.erase(compressed_metadata.begin(), compressed_metadata.begin() + inbuf.pos);
-	current_metadata_block.resize(existing_data + outbuf.pos);
+	// Keep going until the decoder hands out at least one new byte. The
+	// decoder may swallow a partial block without producing output, so
+	// consuming input alone is not progress we can return on.
+	for (;;) {
+		ZSTD_outBuffer outbuf;
+		outbuf.dst = current_metadata_block.data() + existing_data;
+		outbuf.size = 4096;
+		outbuf.pos = 0;
 
-	if (outbuf.pos == 0 && inbuf.pos == 0) {
+		ZSTD_inBuffer inbuf;
+		inbuf.src = compressed_metadata.data();
+		inbuf.size = compressed_metadata.size();
+		inbuf.pos = 0;
+
+		size_t ret = ZSTD_decompressStream(metadata_ctx, &outbuf, &inbuf);
+		if (ZSTD_isError(ret)) {
+			if (conf_verbose) {
+				fprintf(stderr, "ZSTD_decompressStream(metadata): %s\n", ZSTD_getErrorName(ret));
+			}
+			return give_up();
+		}
+		compressed_metadata.erase(compressed_metadata.begin(), compressed_metadata.begin() + inbuf.pos);
+
+		if (outbuf.pos > 0) {
+			current_metadata_block.resize(existing_data + outbuf.pos);
+			return true;
+		}
+
+		// No output: the decoder needs more compressed input.
 		const uint64_t metadata_end = hdr.metadata_offset_bytes + hdr.metadata_length_bytes;
 		const uint64_t comp_pos = static_cast<uint64_t>(compressed_metadata_pos);
 		if (comp_pos >= metadata_end) {
-			metadata_available = false;
-			return false;
+			return give_up();
 		}
 		size_t bytes_to_read = min<size_t>(4096, metadata_end - comp_pos);
 		char buf[4096];
@@ -532,15 +543,11 @@ bool ExistingDB::refill_metadata_block()
 			if (conf_verbose) {
 				perror("pread(metadata)");
 			}
-			metadata_available = false;
-			return false;
+			return give_up();
 		}
 		compressed_metadata_pos += bytes_to_read;
 		compressed_metadata.insert(compressed_metadata.end(), buf, buf + bytes_to_read);
-		return refill_metadata_block();
 	}
-
-	return !current_metadata_block.empty();
 }
 
 void ExistingDB::read_next_metadata_record()

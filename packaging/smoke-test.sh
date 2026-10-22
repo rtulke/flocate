@@ -4,6 +4,8 @@
 # permissions, alternatives, a baseline run, a query as an unprivileged user,
 # a second run that records changes, the live diff, and a clean purge.
 # Meant to run as root in a throwaway container of the target distro.
+# Tool output is captured before grep -q looks at it: with pipefail, grep
+# closing the pipe early would otherwise kill the producer with SIGPIPE.
 set -euxo pipefail
 PKG=${1:?usage: smoke-test.sh /path/to/flocate_*.deb}
 export DEBIAN_FRONTEND=noninteractive
@@ -28,12 +30,12 @@ dpkg -L flocate | grep -qx /usr/share/man/man5/updatedb.conf.5.gz
 dpkg -L flocate | grep -qx /usr/share/man/man1/flocate-showdiff.1.gz
 dpkg -L flocate | grep -qx /usr/share/man/man8/flocate-build.8.gz
 
-flocate --version | grep -q '^flocate '
-flocate-build --version | grep -q '^flocate-build '
-flocate-showdiff --version | grep -q '^flocate-showdiff '
-flocate-updatedb --version | grep -q '^updatedb (flocate) '
-locate --version | grep -q '^flocate '
-updatedb --version | grep -q '^updatedb (flocate) '
+grep -q '^flocate ' <<<"$(flocate --version)"
+grep -q '^flocate-build ' <<<"$(flocate-build --version)"
+grep -q '^flocate-showdiff ' <<<"$(flocate-showdiff --version)"
+grep -q '^updatedb (flocate) ' <<<"$(flocate-updatedb --version)"
+grep -q '^flocate ' <<<"$(locate --version)"
+grep -q '^updatedb (flocate) ' <<<"$(updatedb --version)"
 
 # Baseline run with the packaged configuration plus hashing and history.
 printf 'METADATA_HASH="xxh64"\nHISTORY_DEPTH="5"\n' >> /etc/updatedb.conf
@@ -42,7 +44,7 @@ echo one > /srv/smoke/a.txt
 flocate-updatedb
 [ "$(stat -c '%U %G' /var/lib/flocate/flocate.db)" = "root flocate" ]
 [ "$(flocate -r '^/srv/smoke/a\.txt$')" = /srv/smoke/a.txt ]
-flocate-showdiff --history /var/lib/flocate/flocate.db | grep -q baseline
+grep -q baseline <<<"$(flocate-showdiff --history /var/lib/flocate/flocate.db)"
 
 # The database is group-readable only; the setgid query tool makes it usable.
 useradd -m smoketester
@@ -60,11 +62,14 @@ flocate-updatedb
 HIST=$(flocate-showdiff --history /var/lib/flocate/flocate.db)
 grep -q '^\[MODIFIED\] /srv/smoke/a\.txt' <<<"$HIST"
 grep -q '^\[ADDED\] /srv/smoke/b\.txt' <<<"$HIST"
-flocate-showdiff --json --history /var/lib/flocate/flocate.db | grep -q '"path":"/srv/smoke/b.txt"'
+# Only the two touched files may show up; everything else was unchanged.
+[ "$(grep -c '^\[MODIFIED\]' <<<"$HIST")" = 1 ]
+[ "$(grep -c '^\[ADDED\]' <<<"$HIST")" = 1 ]
+grep -q '"path":"/srv/smoke/b.txt"' <<<"$(flocate-showdiff --json --history /var/lib/flocate/flocate.db)"
 
 # Live diff against the running system.
 echo three > /srv/smoke/c.txt
-flocate-showdiff --live / --added-only /var/lib/flocate/flocate.db | grep -q '^\[ADDED\] /srv/smoke/c\.txt'
+grep -q '^\[ADDED\] /srv/smoke/c\.txt' <<<"$(flocate-showdiff --live / --added-only /var/lib/flocate/flocate.db)"
 
 # Removal leaves nothing behind.
 apt-get purge -y -qq flocate >/dev/null
