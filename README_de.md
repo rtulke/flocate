@@ -4,229 +4,333 @@
 
 ## Überblick
 
-Dieses Repository erweitert [plocate](https://plocate.sesse.net/) um forensische
-Werkzeuge. `flocate` entstand aus dem ursprünglichen
-[plocate-Projekt](https://plocate.sesse.net/); Kernideen und große Teile der
-Implementierung stammen von dort. Zusätzlich zur schnellen plocate-
-Implementierung kann flocates `updatedb` nun pro Datei Metadaten (Modus, Besitz,
-Zeitstempel, Größe und optionale Hashes) sammeln und pro Lauf eine Historie
-speichern. Mit dem Begleittool `flocate-showdiff` lassen sich diese
-Änderungslogs abspielen, zwei Datenbanken vergleichen oder eine Datenbank gegen
-ein Live-Dateisystem prüfen.
+flocate erweitert [plocate](https://plocate.sesse.net/) um forensische
+Werkzeuge. Der schnelle Trigramm-Index und das Suchwerkzeug `flocate` stammen
+von plocate; zusätzlich erfasst flocates `updatedb` pro Datei Metadaten (Modus,
+Besitzer, Größe, mtime/ctime/atime und optional einen Inhalts-Hash) und führt
+in der Datenbank eine Änderungshistorie der letzten Läufe. Das Begleitwerkzeug
+`flocate-showdiff` spielt diese Historie ab, vergleicht zwei Datenbanken oder
+eine Datenbank mit einem live eingehängten Dateisystem (z. B. einem Image oder
+Backup).
 
-## Wichtige Funktionen
+## Hauptfunktionen
 
-- Optionales Hashing über `--metadata-hash=xxh64|sha256`
-  (bzw. `METADATA_HASH` in `/etc/updatedb.conf`) ohne den normalen locate-Flow
-  auszubremsen.
-- Behalte die letzten `N` Läufe mittels `--history-depth=N` /
-  `HISTORY_DEPTH`. Jeder Lauf wird markiert, sodass er gezielt beschnitten oder
-  erneut abgespielt werden kann.
-- Modi von `flocate-showdiff`:
-  - `flocate-showdiff --history DB`: gibt aufgezeichnete Add/Remove/Modify-
-    Ereignisse der jüngsten Läufe aus.
-  - `flocate-showdiff ALT_DB NEU_DB`: vergleicht zwei Snapshots.
-  - `flocate-showdiff --live /mnt/root DB`: vergleicht Dateien unter dem
-    angegebenen Root mit einer Datenbank und berechnet Metadaten/Hashes neu.
-- Alle Tools besitzen groff-Manpages (`flocate(1)`, `updatedb(8)`,
-  `flocate-build(8)`, `flocate-showdiff(1)`).
-- Die Projektstruktur wurde neu organisiert.
+- Metadaten zu jedem indizierten Eintrag, optional mit Hash über
+  `--metadata-hash=xxh64|sha256` (bzw. `METADATA_HASH` in `/etc/updatedb.conf`).
+  Hashes werden in kanonischer Form gespeichert und stimmen mit `xxhsum` und
+  `sha256sum` überein.
+- Günstige tägliche Läufe: Eine Datei wird nur neu gelesen und gehasht, wenn
+  sich Größe, mtime oder ctime geändert haben; `--rehash-all` erzwingt einen
+  vollständigen Durchlauf. Pseudo-Dateisysteme (`proc`, `sysfs`, …) werden
+  indiziert, aber nie gehasht; `--hash-max-size` begrenzt die Dateigröße.
+- Änderungshistorie der letzten `N` Läufe (`--history-depth=N` /
+  `HISTORY_DEPTH`), jeder Lauf durch einen Marker abgegrenzt. Der erste Lauf
+  wird als Baseline aufgezeichnet statt mit einem Ereignis pro Datei.
+- Zugriffszeiten werden gespeichert, aber standardmäßig nicht verglichen
+  (`--compare-atime` / `COMPARE_ATIME` schaltet das ein), weil auf
+  `relatime`-Mounts jeder Lesezugriff sie verändert. Das Hashen selbst
+  verändert die atime nicht (`O_NOATIME`).
+- `flocate-showdiff`-Modi: `--history DB`, `OLD_DB NEW_DB`, `--live ROOT DB`;
+  Filter, `--json` für Skripte und eine `changed:`-Zeile mit den abweichenden
+  Feldern.
+- Datenbank-Einträge sind byteorder-unabhängig, eine Datenbank kann also auf
+  einem anderen Rechner ausgewertet werden.
+- groff-Manpages für `flocate(1)`, `updatedb(8)`, `updatedb.conf(5)`,
+  `flocate-build(8)` und `flocate-showdiff(1)` sowie eine End-to-End-Testsuite.
 
-## Bauen und Installieren
+## Bauen und installieren
 
-Abhängigkeiten: C++17-Compiler, Meson ≥ 0.61, Ninja, libzstd und optional
-liburing.
+Abhängigkeiten: C++17-Compiler, Meson ≥ 0.61, Ninja, libzstd, optional
+liburing. flocate läuft ausschließlich unter Linux.
 
-Vorbereitung der Abhängigkeiten für Debian/Ubuntu/Kali/Raspberry Pi OS etc.:
+Debian/Ubuntu und Derivate:
 
 ```sh
-# Meson, Ninja & Co. installieren
 sudo apt install meson ninja-build cmake cmake-data pkg-config libzstd-dev liburing-dev git
 ```
 
-Stelle sicher, dass keine anderen Suchwerkzeuge wie locate, mlocate oder
-plocate installiert sind. Falls doch, entferne sie – siehe auch den Abschnitt
-[Troubleshooting](#troubleshooting).
+Es darf keine andere `locate`-Implementierung (locate, mlocate, plocate)
+installiert sein; siehe [Fehlerbehebung](#fehlerbehebung).
 
 ```sh
-sudo dpkg -l '*locate'
-sudo apt remove locate   # bzw. plocate, mlocate
+sudo dpkg -l '*locate*'
+sudo apt remove locate   # oder plocate, mlocate
 ```
 
-Repository klonen:
+Klonen, bauen, testen, installieren:
 
 ```sh
-mkdir -p ~/dev
-cd ~/dev
 git clone https://github.com/rtulke/flocate.git
+cd flocate
+
+make config          # meson setup build; bei Bedarf MESON_ARGS="--prefix=/opt/flocate"
+make                 # bauen
+make test            # optional: End-to-End-Testsuite gegen den Build ausführen
+sudo groupadd flocate
+sudo make install    # oder: sudo ninja -C build install
+sudo make uninstall  # wieder entfernen
 ```
 
-Flocate bauen (beliebige Linux-Distribution):
+Alle Targets kapseln Meson; nach Änderung von `MESON_ARGS` erneut `make config`
+ausführen. Meson-Optionen (`meson_options.txt`): `locategroup`, `dbpath`,
+`updatedb_progname`, `install_systemd`, `systemunitdir`, `install_cron`.
+
+## Verwendung im Alltag
+
+### 1. Einmal konfigurieren
+
+Die forensischen Einstellungen gehören neben die üblichen Pruning-Variablen in
+`/etc/updatedb.conf`. Der systemd-Timer ruft `updatedb` ohne Argumente auf,
+diese Datei bestimmt also die Produktivläufe.
 
 ```sh
-cd ~/dev/flocate
+PRUNE_BIND_MOUNTS="yes"
+PRUNEFS="NFS afs autofs cifs fuse.sshfs proc sysfs tmpfs ..."
+PRUNEPATHS="/tmp /var/spool /media /var/tmp"
+PRUNENAMES=".git .hg .svn"
 
-# einmalig konfigurieren (optional: MESON_ARGS="--prefix=/opt/flocate")
-make config
-
-# bauen
-make
-
-# systemweit installieren
-sudo groupadd flocate
-sudo make install   # oder: sudo ninja -C build install
-
-# deinstallieren
-sudo make uninstall
+METADATA_HASH="sha256"     # none | xxh64 | sha256
+HISTORY_DEPTH="14"         # zwei Wochen tägliche Läufe behalten; 0 schaltet die Historie ab
+COMPARE_ATIME="no"         # "yes" protokolliert auch reine atime-Änderungen
+HASH_MAX_SIZE="2G"         # größere Dateien nicht hashen; 0 = keine Grenze
 ```
 
-Alle Ziele kapseln Meson, daher kannst du `make config` jederzeit mit neuen
-`MESON_ARGS` aufrufen.
+Baseline erzeugen und den täglichen Timer aktivieren:
 
-## updatedb-Highlights
-
-- `updatedb --metadata-hash=sha256` hasht reguläre Dateien, bevor die Metadaten
-  serialisiert werden.
-- `updatedb --history-depth=3` (oder `HISTORY_DEPTH="3"` in
-  `/etc/updatedb.conf`) behält die letzten drei Läufe in der Datenbank.
-- Konfigurationsblöcke im Header sorgen dafür, dass inkompatible Änderungen
-  automatisch einen Neuaufbau erzwingen.
-
-## flocate-showdiff verwenden
-
-```
-# interne Historie ansehen
-flocate-showdiff --history /var/lib/flocate/flocate.db
-
-# zwei Snapshots vergleichen
-flocate-showdiff /tmp/alt.db /tmp/neu.db
-
-# Datenbank gegen Live-System prüfen (z. B. eingehängtes Backup)
-flocate-showdiff --live /mnt/backup /var/lib/flocate/flocate.db
+```sh
+sudo updatedb                                 # erster Lauf: Vollscan, als Baseline aufgezeichnet
+sudo systemctl enable --now flocate-updatedb.timer
 ```
 
-Die Ausgabe zeigt betroffene Pfade sowie alte/neue Metadaten (Hashes inklusive,
-falls vorhanden).
+### 2. Täglich: Was hat sich geändert?
 
-## CLI-Referenz
+```sh
+# Alles, was die letzten Läufe aufgezeichnet haben, nach Lauf gruppiert
+sudo flocate-showdiff --history /var/lib/flocate/flocate.db
+
+# Nur Änderungen, maschinenlesbar (ein JSON-Objekt pro Zeile)
+sudo flocate-showdiff --history --modified-only --json /var/lib/flocate/flocate.db
+
+# Dateien suchen wie mit locate
+flocate '*.pem'
+flocate -i -b 'authorized_keys'
+```
+
+Ein MODIFIED-Ereignis zeigt alte und neue Attribute sowie eine `changed:`-Zeile
+wie `changed: size,mtime,ctime,hash`. Änderungen an `mode`, `uid` oder `gid`
+erscheinen nur mit `ctime`; ein geänderter `hash` ohne geänderte `mtime`
+deutet auf einen nach dem Bearbeiten zurückgesetzten Zeitstempel hin.
+
+### 3. Snapshots aufbewahren und vergleichen
+
+Die Datenbank ist ein in sich geschlossener Snapshot. Eine tägliche Kopie
+erlaubt Zeitpunktvergleiche unabhängig von `HISTORY_DEPTH`:
+
+```sh
+sudo cp /var/lib/flocate/flocate.db /var/backups/flocate-$(date +%F).db
+sudo flocate-showdiff /var/backups/flocate-2026-10-01.db /var/lib/flocate/flocate.db
+```
+
+### 4. Backup, Image oder laufendes System prüfen
+
+`--live ROOT` durchläuft den Baum, für den die Datenbank erstellt wurde,
+unterhalb von `ROOT`, berechnet Metadaten und Hashes neu und meldet
+Abweichungen:
+
+```sh
+sudo flocate-showdiff --live /mnt/image  /var/backups/flocate-2026-10-01.db   # eingehängtes Image
+sudo flocate-showdiff --live /           /var/lib/flocate/flocate.db           # laufendes System
+```
+
+Die in der Datenbank gespeicherte Pruning-Konfiguration (`PRUNEFS`,
+`PRUNENAMES`, `PRUNEPATHS`) wird berücksichtigt; Bind-Mounts werden in diesem
+Modus nicht erkannt.
+
+### 5. Gelegentlich
+
+```sh
+sudo updatedb --rehash-all          # jede Datei neu lesen statt Größe/mtime/ctime zu vertrauen
+sudo updatedb -v --debug-pruning    # zeigen, was gescannt, ausgelassen und nicht gehasht wird
+```
+
+Eine Änderung von `METADATA_HASH` oder einer Pruning-Variable macht den
+nächsten Lauf zu einem Vollaufbau, der als neue Baseline aufgezeichnet wird.
+
+## Ausgabe von flocate-showdiff
+
+```
+=== run 2026-10-22 02:08:34 +0200 (baseline: full scan, no per-file events) ===
+=== run 2026-10-23 02:08:38 +0200 ===
+[MODIFIED] /etc/ssh/sshd_config
+  old: mode=100644 uid=0 gid=0 size=3223 mtime=1792627709.973508801 ctime=... atime=... hash=sha256:...
+  new: mode=100644 uid=0 gid=0 size=3251 mtime=1792627714.197516230 ctime=... atime=... hash=sha256:...
+  changed: size,mtime,ctime,hash
+[ADDED] /root/.ssh/authorized_keys
+  new: mode=100600 uid=0 gid=0 size=412 ...
+[REMOVED] /var/log/auth.log.1
+  old: mode=100640 uid=0 gid=4 size=98123 ...
+```
+
+Mit `--json` wird jedes Ereignis zu einem Objekt mit den Schlüsseln `kind`,
+`path`, `time`, `old`, `new` und `changed`; Lauf-Marker haben `kind: "RUN"`,
+`time` und `baseline`.
+
+## Kommandozeilen-Referenz
 
 ### `flocate`
 
-| Option kurz | Option lang               | Beschreibung |
-| :---        | :---                      | :--- |
-| `-A`        | `--all`                   | Nur für mlocate-Kompatibilität relevant. |
-| `-b`        | `--basename`              | Nur den Dateinamen (ohne Verzeichnisse) vergleichen. |
-| `-c`        | `--count`                 | Keine einzelnen Pfade ausgeben, nur die Summe. |
-| `-d`        | `--database DBPFAD`       | Weitere Datenbanken durchsuchen (auch kolonseparierte Liste). |
-| `-e`        | `--existing`              | Nur Einträge melden, die beim Lookup noch existieren. |
-| `-i`        | `--ignore-case`           | Groß-/Kleinschreibung ignorieren (langsamer, eingeschränkte Unicode-Unterstützung). |
-| `-l`        | `--limit ANZAHL`          | Nach `ANZAHL` Treffern abbrechen; begrenzt auch `--count`. |
-| `-N`        | `--literal`               | Pfade ohne Shell-Quoting ausgeben. |
-| `-0`        | `--null`                  | Treffer mit NUL statt Zeilenumbruch trennen. |
-| `-r`        | `--regexp`                | Muster als POSIX-Basisregex interpretieren (erzwingt linearen Scan). |
-|             | `--regex`                 | Muster als POSIX-erweiterte Regex interpretieren. |
-| `-w`        | `--wholename`             | Gesamten Pfad abgleichen (Standard, solange `-b` fehlt). |
-|             | `--help`                  | Hilfe anzeigen. |
-| `-V`        | `--version`               | Versions- und Lizenztext ausgeben. |
+| Option kurz | Option lang                   | Beschreibung |
+| :---        | :---                          | :---         |
+| `-A`        | `--all`                       | Wird aus Kompatibilität zu mlocate ignoriert. |
+| `-b`        | `--basename`                  | Nur gegen den Dateinamen (ohne Pfad) matchen. |
+| `-c`        | `--count`                     | Keine Pfade ausgeben, nur die Gesamtanzahl. |
+| `-d`        | `--database DBPATH`           | Eine oder mehrere Datenbanken durchsuchen (Doppelpunkt-getrennte Liste). |
+| `-e`        | `--existing`                  | Nur Einträge melden, die zum Abfragezeitpunkt noch existieren. |
+| `-i`        | `--ignore-case`               | Groß-/Kleinschreibung ignorieren (langsamer, eingeschränktes Unicode-Folding). |
+| `-l`        | `--limit LIMIT`               | Nach `LIMIT` Treffern abbrechen; `--count` wird ebenso begrenzt. |
+| `-N`        | `--literal`                   | Pfade ohne Shell-Escaping ausgeben (Escaping erfolgt nur auf einem Terminal). |
+| `-0`        | `--null`                      | Treffer mit NUL statt Zeilenumbruch trennen. |
+| `-r`        | `--regexp`                    | Muster als POSIX Basic Regular Expressions interpretieren (linearer Scan). |
+|             | `--regex`                     | Muster als POSIX Extended Regular Expressions interpretieren. |
+| `-w`        | `--wholename`                 | Gegen den vollständigen Pfad matchen (Standard, sofern nicht `-b`). |
+|             | `--help`                      | Hilfe anzeigen. |
+| `-V`        | `--version`                   | Versions-/Lizenzinformationen ausgeben. |
 
 ### `updatedb`
 
 | Option kurz | Option lang                   | Beschreibung |
-| :---        | :---                          | :--- |
-| `-f`        | `--add-prunefs FS`            | Dateisysteme aus `FS` (durch Leerzeichen getrennt) zu `PRUNEFS` hinzufügen. |
-| `-n`        | `--add-prunenames NAMEN`      | Namen zu `PRUNENAMES` hinzufügen. |
-| `-e`        | `--add-prunepaths PFADE`      | Pfade zu `PRUNEPATHS` hinzufügen. |
-|             | `--add-single-prunepath PFAD` | Einzelnen Pfad (auch mit Leerzeichen) zu `PRUNEPATHS` hinzufügen. |
-| `-U`        | `--database-root PFAD`        | Scan auf den Teilbaum unter `PFAD` begrenzen. |
-|             | `--debug-pruning`             | Entscheidungen zu ausgelassenen Pfaden auf stderr protokollieren. |
+| :---        | :---                          | :---         |
+| `-f`        | `--add-prunefs FS`            | Durch Leerzeichen getrennte Dateisysteme an `PRUNEFS` anhängen. |
+| `-n`        | `--add-prunenames NAMES`      | Verzeichnisnamen an `PRUNENAMES` anhängen. |
+| `-e`        | `--add-prunepaths PATHS`      | Pfade an `PRUNEPATHS` anhängen. |
+|             | `--add-single-prunepath PATH` | Einen einzelnen Pfad (auch mit Leerzeichen) an `PRUNEPATHS` anhängen. |
+| `-U`        | `--database-root PATH`        | Scan auf `PATH` beschränken. |
+|             | `--debug-pruning`             | Ausführliche Pruning- und Hashing-Diagnose auf stderr. |
 | `-h`        | `--help`                      | Hilfe anzeigen. |
-| `-o`        | `--output DATEI`              | Datenbank in `DATEI` schreiben. |
+| `-o`        | `--output FILE`               | Datenbank nach `FILE` statt an den Standardort schreiben. |
+| `-b`        | `--block-size SIZE`           | `SIZE` Dateinamen pro Block komprimieren (Standard 32). |
 |             | `--prune-bind-mounts FLAG`    | `PRUNE_BIND_MOUNTS` überschreiben (`yes`/`no`). |
-|             | `--prunefs FS`                | `PRUNEFS` komplett ersetzen. |
-|             | `--prunenames NAMEN`          | `PRUNENAMES` komplett ersetzen. |
-|             | `--prunepaths PFADE`          | `PRUNEPATHS` komplett ersetzen. |
+|             | `--prunefs FS`                | `PRUNEFS` vollständig überschreiben. |
+|             | `--prunenames NAMES`          | `PRUNENAMES` vollständig überschreiben. |
+|             | `--prunepaths PATHS`          | `PRUNEPATHS` vollständig überschreiben. |
 |             | `--metadata-hash ALGO`        | Reguläre Dateien mit `none`, `xxh64` oder `sha256` hashen. |
 |             | `--history-depth N`           | Metadaten/Historie für die letzten `N` Läufe speichern (`0` deaktiviert). |
 |             | `--compare-atime FLAG`        | Reine atime-Änderungen als MODIFIED protokollieren (`yes`/`no`, Standard `no`). |
-| `-l`        | `--require-visibility FLAG`   | Sichtbarkeitsprüfung durch locate aktivieren/deaktivieren. |
-| `-v`        | `--verbose`                   | Jeden gefundenen Pfad sofort ausgeben. |
-| `-V`        | `--version`                   | Versions-/Lizenztext ausgeben. |
+|             | `--hash-max-size SIZE`        | Dateien größer als `SIZE` nicht hashen (Suffix `K`/`M`/`G`/`T`; 0 = keine Grenze). |
+|             | `--rehash-all`                | Jede Datei neu hashen, auch wenn Größe, mtime und ctime unverändert sind. |
+| `-l`        | `--require-visibility FLAG`   | Rechteprüfung in der erzeugten Datenbank ein-/ausschalten. |
+| `-v`        | `--verbose`                   | Jeden gefundenen Pfad ausgeben. |
+| `-V`        | `--version`                   | Versions-/Lizenzinformationen ausgeben. |
 
 ### `flocate-build`
 
-| Option kurz | Option lang               | Beschreibung |
-| :---        | :---                      | :--- |
-| `-b`        | `--block-size ANZAHL`     | `ANZAHL` Dateinamen pro Posting-Block komprimieren (Standard 32). |
-| `-p`        | `--plaintext`             | Eingabe als zeilenbasierten Text statt als mlocate-DB behandeln. |
-| `-l`        | `--require-visibility FLAG` | Sichtbarkeitsflag in der erzeugten Datenbank setzen. |
-|             | `--help`                  | Hilfe anzeigen. |
-| `-V`        | `--version`               | Versions-/Lizenztext ausgeben. |
+| Option kurz | Option lang                   | Beschreibung |
+| :---        | :---                          | :---         |
+| `-b`        | `--block-size SIZE`           | `SIZE` Dateinamen pro Posting-List-Block komprimieren (Standard 32). |
+| `-p`        | `--plaintext`                 | Eingabe als zeilenweise Textliste statt mlocate-DB behandeln. |
+| `-l`        | `--require-visibility FLAG`   | Das „require visibility“-Flag in der erzeugten Datenbank setzen. |
+|             | `--help`                      | Hilfe anzeigen. |
+| `-V`        | `--version`                   | Versions-/Lizenzinformationen ausgeben. |
+
+Von `flocate-build` erzeugte Datenbanken enthalten keine Metadaten und keine
+Historie.
 
 ### `flocate-showdiff`
 
 | Option kurz | Option lang         | Beschreibung |
-| :---        | :---                | :--- |
-|             | `--history DB`      | Eingebettete Historie aus `DB` abspielen. |
-|             | `ALT_DB NEU_DB`     | Positionsargumente für den Snapshot-Vergleich. |
-|             | `--live ROOT DB`    | `DB` mit dem Live-Dateisystem unter `ROOT` vergleichen. |
+| :---        | :---                | :---         |
+|             | `--history DB`      | Die in `DB` eingebettete Historie pro Lauf abspielen (auch Standard bei einem einzelnen DB-Argument). |
+|             | `OLD_DB NEW_DB`     | Positionsargumente für den Snapshot-Vergleich. |
+|             | `--live ROOT DB`    | `DB` mit dem Live-Baum unter `ROOT` vergleichen (der Scan-Root der Datenbank wird angehängt). |
 |             | `--added-only`      | Nur ADDED-Ereignisse anzeigen. |
 |             | `--removed-only`    | Nur REMOVED-Ereignisse anzeigen. |
 |             | `--modified-only`   | Nur MODIFIED-Ereignisse anzeigen. |
 |             | `--compare-atime`   | Reine atime-Unterschiede im Diff-/Live-Modus als Änderung werten. |
+|             | `--json`            | Ein JSON-Objekt pro Ereignis statt des Textformats ausgeben. |
 |             | `--help`            | Hilfe anzeigen. |
-| `-V`        | `--version`         | Versions-/Lizenztext ausgeben. |
+| `-V`        | `--version`         | Versions-/Lizenzinformationen ausgeben. |
 
-## Konfiguration und Dokumentation
+## Konfigurationsdatei
 
-- `/etc/updatedb.conf` versteht neben den klassischen Pruning-Optionen auch
-  `METADATA_HASH`, `HISTORY_DEPTH` und `COMPARE_ATIME`.
-- Zugriffszeiten (atime) werden gespeichert, aber standardmäßig nicht verglichen:
-  unter `relatime` setzt jeder Lesezugriff die atime neu, wodurch jede Datei als
-  MODIFIED erschiene. Bei Bedarf `COMPARE_ATIME="yes"` (oder `--compare-atime yes`) setzen.
+`/etc/updatedb.conf` versteht neben den klassischen Pruning-Variablen
+`PRUNE_BIND_MOUNTS`, `PRUNEFS`, `PRUNENAMES` und `PRUNEPATHS`:
 
-## Troubleshooting
+| Variable        | Werte                                   | Standard |
+| :---            | :---                                    | :---     |
+| `METADATA_HASH` | `none`, `xxh64`, `sha256`               | `none`   |
+| `HISTORY_DEPTH` | Anzahl zu behaltender Läufe, `0` = aus  | `1`      |
+| `COMPARE_ATIME` | `yes` / `no`                            | `no`     |
+| `HASH_MAX_SIZE` | Bytes, Suffix `K`/`M`/`G`/`T`, `0` = keine Grenze | `0` |
 
-### Systemweite Installation (Konflikte mit locate/mlocate/plocate)
+Ohne die Datei wird kein Dateisystem ausgelassen; mit aktiviertem Hashing ist
+das zwar sicher (Pseudo-Dateisysteme werden nie gehasht), aber langsam. Eine
+`PRUNEFS`-Liste sollte immer gesetzt sein.
+
+## Tests
+
+`tests/run-tests.sh` legt temporäre Bäume an und prüft jede Option der vier
+Werkzeuge, darunter Hash-Werte gegen `sha256sum` und die XXH64-Referenzvektoren,
+die Historien-Semantik, Pruning und die drei Modi von `flocate-showdiff`. Die
+Suite läuft als normaler Benutzer und braucht etwa eine Minute, überwiegend
+Wartezeit, bis Verzeichnis-Zeitstempel „alt genug“ sind (`updatedb` scannt
+Verzeichnisse neu, die vor weniger als drei Sekunden geändert wurden).
+
+```sh
+make test                       # meson test -C build
+tests/run-tests.sh build        # dasselbe mit Ausgabe je Prüfung
+FLOCATE_TEST_SETTLE=4 tests/run-tests.sh build
+```
+
+## Fehlerbehebung
+
+### Systemweite Installation (flocates updatedb kollidiert mit locate, mlocate oder plocate)
 
 ```sh
 sudo dpkg -l | grep locate
+
+ii  locate                         4.9.0-4       amd64        maintain and query an index of a directory tree
+ii  mlocate                        1.1.18-1      all          transitional dummy package
+ii  plocate                        1.1.18-1      amd64        much faster locate
 ```
 
 oder
 
 ```sh
-ls -lat /usr/bin/locate
-ls -lat /etc/alternatives/locate
-ls -lat /usr/bin/plocate
+ls -la /usr/bin/locate /etc/alternatives/locate /usr/bin/plocate
+ls -la /usr/bin/updatedb /etc/alternatives/updatedb /usr/sbin/updatedb.plocate
 ```
 
-und analog
+Zeigen `/usr/bin/locate` und `/usr/bin/updatedb` über `/etc/alternatives` auf
+plocate, überdecken die Distributionswerkzeuge flocate, das nach
+`/usr/local/bin` und `/usr/local/sbin` installiert wird. Entweder das andere
+Paket entfernen
 
 ```sh
-ls -lat /usr/bin/updatedb
-ls -lat /etc/alternatives/updatedb
-ls -lat /usr/sbin/updatedb.plocate
+sudo apt remove locate      # oder plocate, mlocate
 ```
 
-Dies zeigt Symlink-Ketten wie `/usr/bin/locate -> /etc/alternatives/locate ->
-/usr/bin/plocate` bzw. `/usr/bin/updatedb -> … -> /usr/sbin/updatedb.plocate`.
-Solche Installationen können unser `updatedb` stören – flocate wird nach
-`/usr/local/bin` bzw. `/usr/local/sbin` installiert.
-
-Auf eigenes Risiko kannst du Symlinks direkt auf flocate setzen:
+oder auf eigenes Risiko die Symlinks auf flocate zeigen lassen:
 
 ```sh
 sudo ln -fs /usr/local/sbin/updatedb /usr/bin/updatedb
 sudo ln -fs /usr/local/bin/flocate /usr/bin/locate
 ```
 
-Empfehlung: deinstalliere nicht benötigte locate-Varianten komplett.
+### `flocate-showdiff` meldet, die Datenbank werde nicht unterstützt
 
-```sh
-sudo apt remove locate   # bzw. plocate, mlocate
-```
+Datenbanken aus flocate 1.2.0 verwenden ein älteres Metadaten-Layout. Einmal
+`updatedb` ausführen; die Datenbank wird neu aufgebaut (als Baseline
+aufgezeichnet).
+
+### Jede Datei erscheint als MODIFIED
+
+Prüfen, ob `COMPARE_ATIME="yes"` auf einem `relatime`-Mount gesetzt ist oder ob
+zwischen den verglichenen Läufen der Hash-Algorithmus bzw. die
+Pruning-Konfiguration geändert wurde (eine Konfigurationsänderung löst einen
+Vollaufbau aus).
 
 ## Referenzen
 
-- Siehe die installierten Manpages für die vollständige Referenz:
-  `flocate(1)`, `updatedb(8)`, `flocate-build(8)` und `flocate-showdiff(1)`.
+- Installierte Manpages: `flocate(1)`, `updatedb(8)`, `updatedb.conf(5)`,
+  `flocate-build(8)`, `flocate-showdiff(1)`.
+- Upstream plocate: <https://plocate.sesse.net/>, <https://github.com/plocate/plocate>.
