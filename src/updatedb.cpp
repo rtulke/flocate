@@ -691,10 +691,14 @@ pair<string, dir_time> ExistingDB::read_next()
 		++current_docid;
 	}
 
-	// See if we need to read more directory time data.
+	// See if we need to read more directory time data. A directory record is a
+	// marker byte plus sec and nsec as written by EncodingCorpus::add_file(), not
+	// sizeof(dir_time): the struct is padded to 16 bytes, and asking for that much
+	// at the tail of the stream makes the last entries look truncated.
+	constexpr size_t dir_record_bytes = 1 + sizeof(int64_t) + sizeof(int32_t);
 	while (current_dir_time_ptr == current_dir_time_end ||
 	       (*current_dir_time_ptr != 0 &&
-	        size_t(current_dir_time_end - current_dir_time_ptr) < sizeof(dir_time) + 1)) {
+	        size_t(current_dir_time_end - current_dir_time_ptr) < dir_record_bytes)) {
 		if (current_dir_time_ptr != nullptr) {
 			const size_t bytes_consumed = current_dir_time_ptr - current_dir_time_block.data();
 			current_dir_time_block.erase(current_dir_time_block.begin(), current_dir_time_block.begin() + bytes_consumed);
